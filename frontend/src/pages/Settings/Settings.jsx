@@ -293,7 +293,7 @@ export default function Settings() {
               </tbody>
             </table>
             <p style={{ marginTop: 12, fontSize: 12, color: "var(--color-text-secondary)" }}>
-              {usage.metering?.note}
+              {t("settings.usageNote")}
             </p>
           </>
         )}

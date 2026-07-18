@@ -153,11 +153,6 @@ def get_usage():
                 for row in by_provider
                 if row["ai_provider"] in {"claude_cli", "codex_cli"}
             ),
-            "note": (
-                "Anthropic API vracia tokeny a odhad ceny. Claude CLI vie tokeny/cost "
-                "len ked ich CLI vrati v JSON obale. Codex CLI tokeny ani percento "
-                "limitu nevystavuje, preto sa pocita ako CLI volanie bez tokenov."
-            ),
         },
     }
 

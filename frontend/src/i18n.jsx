@@ -242,6 +242,7 @@ const DICTIONARIES = {
     "settings.refreshStatus": "Obnoviť stav",
     "settings.privacyLink": "Ochrana údajov a AI spracovanie",
     "settings.testError": "Chyba: {detail}",
+    "settings.usageNote": "Anthropic API vracia tokeny a odhad ceny. Claude CLI vie tokeny/cost len ked ich CLI vrati v JSON obale. Codex CLI tokeny ani percento limitu nevystavuje, preto sa pocita ako CLI volanie bez tokenov.",
   },
   en: {
     "common.loading": "Loading...",
@@ -481,6 +482,7 @@ const DICTIONARIES = {
     "settings.refreshStatus": "Refresh status",
     "settings.privacyLink": "Privacy notice and AI processing",
     "settings.testError": "Error: {detail}",
+    "settings.usageNote": "The Anthropic API returns tokens and a cost estimate. Claude CLI only knows tokens/cost when the CLI returns them in its JSON envelope. Codex CLI does not expose tokens or usage percentage at all, so it is counted as a CLI call without tokens.",
   },
 };
 

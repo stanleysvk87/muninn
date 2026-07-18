@@ -12,6 +12,7 @@ const COLUMNS = [
   { key: "correspondent", label: "Firma / osoba" },
   { key: "doc_type", label: "Typ" },
   { key: "doc_date", label: "Datum" },
+  { key: "expiry_date", label: "Plati do", hideOnMobile: true, render: (r) => r.expiry_date || "-" },
   {
     key: "amount_value",
     label: "Suma",
@@ -44,7 +45,14 @@ const COLUMNS = [
   },
 ];
 
-export default function Search({ onOpenDocument }) {
+const SAVED_VIEW_LABELS = {
+  review: "Na kontrolu",
+  pay: "Zaplatit",
+  failed: "Zlyhania",
+  duplicates: "Mozne duplikaty",
+};
+
+export default function Search({ expiringOnly = false, savedView = null, onOpenDocument, onNavigate }) {
   const [q, setQ] = useState("");
   const [correspondent, setCorrespondent] = useState(null);
   const [docType, setDocType] = useState(null);
@@ -52,6 +60,7 @@ export default function Search({ onOpenDocument }) {
   const [error, setError] = useState(null);
   const [facets, setFacets] = useState(null);
   const [selected, setSelected] = useState(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     api.get("/documents/facets").then((res) => setFacets(res.data));
@@ -61,20 +70,23 @@ export default function Search({ onOpenDocument }) {
     let cancelled = false;
     const params = {};
     if (q) params.q = q;
-    if (correspondent) params.correspondent = correspondent;
-    if (docType) params.doc_type = docType;
-    api
-      .get("/documents", { params })
+    if (correspondent && !savedView) params.correspondent = correspondent;
+    if (docType && !savedView) params.doc_type = docType;
+    if (savedView) params.saved_view = savedView;
+    const request = expiringOnly
+      ? api.get("/documents/expiring")
+      : api.get("/documents", { params });
+    request
       .then((res) => !cancelled && setRows(res.data))
       .catch((err) => !cancelled && setError(err.response?.data?.detail || "Nepodarilo sa nacitat dokumenty"));
     return () => {
       cancelled = true;
     };
-  }, [q, correspondent, docType]);
+  }, [q, correspondent, docType, expiringOnly, savedView]);
 
   useEffect(() => {
     setSelected(new Set());
-  }, [q, correspondent, docType]);
+  }, [q, correspondent, docType, expiringOnly, savedView]);
 
   function toggleSelect(id) {
     setSelected((prev) => {
@@ -98,24 +110,54 @@ export default function Search({ onOpenDocument }) {
 
   return (
     <div>
-      <PageHeader eyebrow="Archiv" title="Hladanie" description="Zadaj meno firmy alebo cast textu (napr. 'uniqa')." />
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Hladat..."
-        style={{
-          width: "100%",
-          padding: "10px 14px",
-          marginBottom: 12,
-          borderRadius: 8,
-          border: "1px solid var(--color-border-strong)",
-          background: "var(--color-ink-secondary)",
-          color: "var(--color-text-primary)",
-        }}
+      <PageHeader
+        eyebrow="Archiv"
+        title={expiringOnly ? "Expiracie" : savedView ? SAVED_VIEW_LABELS[savedView] || "Pohlad" : "Hladanie"}
+        description={
+          expiringOnly
+            ? "Aktivne upozornenia, ktore este nie su oznacene ako vybavene."
+            : savedView
+              ? "Ulozeny pracovny pohlad z dashboardu."
+              : "Zadaj meno firmy alebo cast textu (napr. 'uniqa')."
+        }
+        actions={(expiringOnly || savedView) ? <Button variant="secondary" onClick={() => onNavigate("search")}>Vsetky dokumenty</Button> : null}
       />
+      {!expiringOnly && !savedView && (
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Hladat..."
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            marginBottom: 12,
+            borderRadius: 8,
+            border: "1px solid var(--color-border-strong)",
+            background: "var(--color-ink-secondary)",
+            color: "var(--color-text-primary)",
+          }}
+        />
+      )}
 
-      {facets && (facets.correspondents.length > 0 || facets.doc_types.length > 0) && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+      {!expiringOnly && !savedView && facets && (facets.correspondents.length > 0 || facets.doc_types.length > 0) && (
+        <>
+          <div className="filter-toolbar">
+            <Button variant="secondary" onClick={() => setFiltersOpen((v) => !v)}>
+              Filtre
+            </Button>
+            {(docType || correspondent) && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setDocType(null);
+                  setCorrespondent(null);
+                }}
+              >
+                Zrusit filtre
+              </Button>
+            )}
+          </div>
+          <div className={`filter-chips ${filtersOpen ? "open" : ""}`}>
           {facets.doc_types.map((f) => (
             <button
               key={`type-${f.doc_type}`}
@@ -144,7 +186,8 @@ export default function Search({ onOpenDocument }) {
               {f.correspondent} ({f.count})
             </button>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       {selected.size > 0 && (
@@ -171,6 +214,30 @@ export default function Search({ onOpenDocument }) {
           selectedIds={selected}
           onToggleSelect={toggleSelect}
           onToggleAll={toggleAll}
+          mobileRender={(row, state) => (
+            <div key={row.id} className="mobile-doc-row" onClick={state.open}>
+              <input
+                type="checkbox"
+                checked={state.selected}
+                onClick={(e) => e.stopPropagation()}
+                onChange={state.toggleSelected}
+                aria-label={`Oznacit dokument ${row.original_filename || row.correspondent}`}
+              />
+              <div className="mobile-doc-main">
+                <strong>{row.correspondent}</strong>
+                <span>{row.doc_type || "-"}{row.expiry_date ? ` · plati do ${row.expiry_date}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
+                {row.summary && <p>{row.summary.slice(0, 120)}</p>}
+              </div>
+              <div className="mobile-doc-actions" onClick={(e) => e.stopPropagation()}>
+                <StatusBadge status={row.status} />
+                {row.status === "processed" && (
+                  <a className="btn btn-ghost" href={`/api/documents/${row.id}/file?download=true`}>
+                    Stiahnut
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
         />
       )}
     </div>

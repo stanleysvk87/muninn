@@ -6,7 +6,7 @@ from pathlib import Path
 import anthropic
 
 from .base import ExtractionError, ExtractionResult
-from .prompt import build_prompt
+from .prompt import build_prompt, read_inline_text
 
 EXTRACTION_SCHEMA = {
     "type": "object",
@@ -17,8 +17,22 @@ EXTRACTION_SCHEMA = {
         "expiry_date": {"type": ["string", "null"]},
         "amount": {"type": ["string", "null"]},
         "summary": {"type": "string"},
+        "evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string"},
+                    "value": {"type": ["string", "null"]},
+                    "snippet": {"type": "string"},
+                    "confidence": {"type": "number"},
+                },
+                "required": ["field", "value", "snippet", "confidence"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary"],
+    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary", "evidence"],
     "additionalProperties": False,
 }
 
@@ -32,20 +46,29 @@ class AnthropicAPIProvider:
 
     def extract(self, file_path: Path) -> ExtractionResult:
         mime_type, _ = mimetypes.guess_type(file_path.name)
-        data = base64.standard_b64encode(file_path.read_bytes()).decode()
+        inline_text = read_inline_text(file_path)
 
-        if mime_type == "application/pdf":
-            content_block = {
-                "type": "document",
-                "source": {"type": "base64", "media_type": "application/pdf", "data": data},
-            }
-        elif mime_type and mime_type.startswith("image/"):
-            content_block = {
-                "type": "image",
-                "source": {"type": "base64", "media_type": mime_type, "data": data},
-            }
+        if inline_text:
+            content = [{"type": "text", "text": build_prompt(file_path.name, inline_text)}]
         else:
-            raise ExtractionError(f"nepodporovany typ suboru pre API fallback: {mime_type}")
+            data = base64.standard_b64encode(file_path.read_bytes()).decode()
+            content_block = None
+            if mime_type == "application/pdf":
+                content_block = {
+                    "type": "document",
+                    "source": {"type": "base64", "media_type": "application/pdf", "data": data},
+                }
+            elif mime_type and mime_type.startswith("image/"):
+                content_block = {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mime_type, "data": data},
+                }
+            else:
+                raise ExtractionError(f"nepodporovany typ suboru pre API fallback: {mime_type}")
+            content_block = {
+                **content_block,
+            }
+            content = [content_block, {"type": "text", "text": build_prompt(file_path.name)}]
 
         try:
             response = self._client.messages.create(
@@ -55,10 +78,7 @@ class AnthropicAPIProvider:
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            content_block,
-                            {"type": "text", "text": build_prompt(file_path.name)},
-                        ],
+                        "content": content,
                     }
                 ],
             )
@@ -87,6 +107,7 @@ class AnthropicAPIProvider:
             expiry_date=data_json.get("expiry_date"),
             amount_raw=data_json.get("amount"),
             summary=data_json.get("summary") or "",
+            evidence=data_json.get("evidence") if isinstance(data_json.get("evidence"), list) else None,
             raw_response=text,
             cost_usd=cost_usd,
             input_tokens=input_tokens,

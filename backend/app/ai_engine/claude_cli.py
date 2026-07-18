@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 from .base import ExtractionError, ExtractionResult
-from .prompt import build_prompt
+from .prompt import build_prompt, read_inline_text
 
 JSON_SPAN_RE = re.compile(r"\{.*\}", re.DOTALL)
 
@@ -14,7 +14,7 @@ class ClaudeCLIProvider:
     model = "default"  # whatever the CLI's own default/subscription model is
 
     def extract(self, file_path: Path) -> ExtractionResult:
-        prompt = build_prompt(str(file_path))
+        prompt = build_prompt(str(file_path), read_inline_text(file_path))
         # POZOR: prompt musi byt HNED za -p. --add-dir a --allowedTools su
         # variadicke flagy (commander "...") a zozeru nasledujuci argument
         # ako svoju vlastnu hodnotu -- ak by prompt prisiel az za nimi,
@@ -74,6 +74,7 @@ class ClaudeCLIProvider:
             expiry_date=data.get("expiry_date"),
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
+            evidence=data.get("evidence") if isinstance(data.get("evidence"), list) else None,
             raw_response=result_text,
             cost_usd=outer.get("total_cost_usd"),
             input_tokens=input_tokens,

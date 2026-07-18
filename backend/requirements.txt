@@ -6,3 +6,6 @@ anthropic
 watchdog
 python-multipart
 Pillow
+httpx
+pypdf
+PyMuPDF

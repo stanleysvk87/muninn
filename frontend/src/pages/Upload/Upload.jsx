@@ -15,7 +15,7 @@ export default function Upload() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await api.post("/upload", formData);
+      const res = await api.post("/upload", formData, { timeout: 180000 });
       setMessage(
         res.data.duplicate
           ? `Tento dokument uz mas archivovany (dokument #${res.data.document_id}) - nespracovane znova`

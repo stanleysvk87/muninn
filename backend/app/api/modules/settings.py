@@ -1,9 +1,11 @@
+import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ... import crypto
-from ...ai_engine import get_provider
+from ...ai_engine import get_provider, get_provider_chain
 from ...ai_engine.base import ExtractionError
 from ...db import execute
 from ...ingest.watch_folder import sync_watch_folders
@@ -101,4 +103,97 @@ def get_usage():
     return {
         "total": dict(total),
         "by_provider": [dict(row) for row in by_provider],
+        "metering": {
+            "api_documents": sum(
+                row["documents"]
+                for row in by_provider
+                if row["ai_provider"] == "anthropic_api"
+            ),
+            "cli_documents": sum(
+                row["documents"]
+                for row in by_provider
+                if row["ai_provider"] in {"claude_cli", "codex_cli"}
+            ),
+            "note": (
+                "Anthropic API vracia tokeny a odhad ceny. Claude CLI vie tokeny/cost "
+                "len ked ich CLI vrati v JSON obale. Codex CLI tokeny ani percento "
+                "limitu nevystavuje, preto sa pocita ako CLI volanie bez tokenov."
+            ),
+        },
+    }
+
+
+def _cli_status(binary: str, version_args: list[str] | None = None) -> dict:
+    path = shutil.which(binary)
+    if not path:
+        return {"name": binary, "available": False, "path": None, "version": None}
+
+    version = None
+    if version_args:
+        try:
+            proc = subprocess.run(
+                [binary, *version_args],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            text = (proc.stdout or proc.stderr).strip()
+            version = text.splitlines()[0][:160] if text else None
+        except (OSError, subprocess.SubprocessError):
+            version = None
+
+    return {"name": binary, "available": True, "path": path, "version": version}
+
+
+@router.get("/diagnostics")
+def get_diagnostics():
+    failed_uids = get_setting("mail_failed_uids", {})
+    recent_failed = execute(
+        """SELECT id, original_filename, source, source_detail, ai_provider,
+                  substr(coalesce(error_message, ''), 1, 300) AS error_message,
+                  created_at
+           FROM documents
+           WHERE status = 'failed'
+           ORDER BY created_at DESC
+           LIMIT 8"""
+    ).fetchall()
+    provider_counts = execute(
+        """SELECT ai_provider, status, COUNT(*) AS documents
+           FROM documents
+           GROUP BY ai_provider, status
+           ORDER BY documents DESC"""
+    ).fetchall()
+    recent_jobs = execute(
+        """SELECT j.*, d.correspondent, d.doc_type
+           FROM ingest_jobs j
+           LEFT JOIN documents d ON d.id = j.document_id
+           ORDER BY j.started_at DESC, j.id DESC
+           LIMIT 12"""
+    ).fetchall()
+
+    chain = []
+    try:
+        chain = [{"name": p.name, "model": p.model} for p in get_provider_chain()]
+    except ExtractionError:
+        chain = []
+
+    return {
+        "ai_mode": get_setting("ai_provider_mode", "auto"),
+        "provider_chain": chain,
+        "cli": {
+            "claude": _cli_status("claude", ["--version"]),
+            "codex": _cli_status("codex", ["--version"]),
+        },
+        "anthropic_api_configured": bool(get_setting("anthropic_api_key_encrypted")),
+        "mail": {
+            "enabled": bool(get_setting("mail", {}).get("enabled")),
+            "last_uid": get_setting("mail_last_uid", 0),
+            "failed_uids": failed_uids,
+            "failed_uid_count": len(failed_uids),
+        },
+        "documents": {
+            "provider_counts": [dict(row) for row in provider_counts],
+            "recent_failed": [dict(row) for row in recent_failed],
+        },
+        "jobs": [dict(row) for row in recent_jobs],
     }

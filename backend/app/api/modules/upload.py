@@ -20,9 +20,7 @@ async def upload(file: UploadFile):
         shutil.copyfileobj(file.file, out)
 
     result = pipeline.process(dest, source="upload")
-    # On success pipeline.process already moved dest into the archive; on
-    # failure it's left here and this cleanup discards it (upload source
-    # files aren't worth preserving on disk the way watch-folder ones are —
-    # the user still has the original on their device to re-upload).
+    # On success pipeline.process moved dest into the archive. On failure it
+    # parks dest under archive/_failed before this temp-dir cleanup runs.
     shutil.rmtree(tmp_dir, ignore_errors=True)
     return result

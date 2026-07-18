@@ -14,6 +14,42 @@ _DOCUMENTS_COLUMNS = {
     "input_tokens": "INTEGER",
     "output_tokens": "INTEGER",
     "expiry_date": "TEXT",
+    "expiry_dismissed_at": "TEXT",
+    "review_status": "TEXT NOT NULL DEFAULT 'na_kontrolu'",
+    "evidence_json": "TEXT",
+}
+
+_DEFAULT_SAVED_VIEWS = {
+    "review": {
+        "label": "Na kontrolu",
+        "description": "Dokumenty, ktore este treba pozriet alebo rozhodnut.",
+        "query": '{"review_status":"na_kontrolu"}',
+        "sort_order": 10,
+    },
+    "pay": {
+        "label": "Zaplatit",
+        "description": "Faktury alebo platby oznacene na vybavenie.",
+        "query": '{"review_status":"zaplatit"}',
+        "sort_order": 20,
+    },
+    "expiring": {
+        "label": "Expiracie",
+        "description": "Aktivne dokumenty s datumom expiracie alebo obnovy.",
+        "query": '{"expiring":true}',
+        "sort_order": 30,
+    },
+    "failed": {
+        "label": "Zlyhania",
+        "description": "Subory, ktore nepresli spracovanim.",
+        "query": '{"status":"failed"}',
+        "sort_order": 40,
+    },
+    "duplicates": {
+        "label": "Mozne duplikaty",
+        "description": "Dokumenty s otvorenym duplikatovym warningom.",
+        "query": '{"duplicates":true}',
+        "sort_order": 50,
+    },
 }
 
 
@@ -26,6 +62,37 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if column not in existing:
             conn.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON documents(expiry_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_review_status ON documents(review_status)")
+    now = "datetime('now')"
+    for key, view in _DEFAULT_SAVED_VIEWS.items():
+        conn.execute(
+            f"""INSERT OR IGNORE INTO saved_views
+                 (key, label, description, query_json, sort_order, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, {now}, {now})""",
+            (key, view["label"], view["description"], view["query"], view["sort_order"]),
+        )
+    conn.execute(
+        """INSERT INTO document_events
+             (document_id, event_type, message, actor, metadata_json, created_at)
+           SELECT id, 'history_backfill',
+                  'Dokument bol v DB pred zapnutim audit timeline',
+                  'system', NULL, created_at
+           FROM documents
+           WHERE NOT EXISTS (
+               SELECT 1 FROM document_events WHERE document_events.document_id = documents.id
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO ingest_jobs
+             (document_id, source, source_detail, original_filename, status, duplicate,
+              ai_provider, error_message, started_at, finished_at)
+           SELECT id, source, source_detail, original_filename, 'imported', 0,
+                  ai_provider, error_message, created_at, updated_at
+           FROM documents
+           WHERE NOT EXISTS (
+               SELECT 1 FROM ingest_jobs WHERE ingest_jobs.document_id = documents.id
+           )"""
+    )
     conn.commit()
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
+from ...audit import add_document_event
 from ...db import execute
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -17,9 +18,111 @@ EXPORT_FIELDS = [
     "amount_currency", "summary", "original_filename", "stored_path",
 ]
 
+DOWNLOAD_ONLY_MIME_TYPES = {
+    "application/octet-stream",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+EXTENSION_MIME_TYPES = {
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".odt": "application/vnd.oasis.opendocument.text",
+}
+
 
 def _row_to_dict(row) -> dict:
     return {k: row[k] for k in row.keys()}
+
+
+def _document_payload(row) -> dict:
+    data = _row_to_dict(row)
+    evidence_json = data.pop("evidence_json", None)
+    try:
+        data["evidence"] = json.loads(evidence_json) if evidence_json else []
+    except json.JSONDecodeError:
+        data["evidence"] = []
+    data["duplicate_warning_count"] = execute(
+        """SELECT COUNT(*) AS count FROM document_duplicate_candidates
+           WHERE status = 'open' AND (document_id = ? OR candidate_id = ?)""",
+        (data["id"], data["id"]),
+    ).fetchone()["count"]
+    return data
+
+
+def _download_mime_type(path: Path, stored_mime_type: str | None) -> str:
+    return EXTENSION_MIME_TYPES.get(path.suffix.lower()) or stored_mime_type or "application/octet-stream"
+
+
+def _saved_view_clauses(saved_view: str | None) -> tuple[list[str], list]:
+    if not saved_view:
+        return [], []
+    view = execute("SELECT query_json FROM saved_views WHERE key = ?", (saved_view,)).fetchone()
+    if view is None:
+        raise HTTPException(status_code=404, detail="Saved view nenajdeny")
+    try:
+        query = json.loads(view["query_json"])
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail="Saved view ma neplatnu konfiguraciu") from exc
+
+    clauses: list[str] = []
+    params: list = []
+    if query.get("review_status"):
+        clauses.append("review_status = ?")
+        params.append(query["review_status"])
+    if query.get("status"):
+        clauses.append("status = ?")
+        params.append(query["status"])
+    if query.get("expiring"):
+        horizon = (date.today() + timedelta(days=60)).isoformat()
+        clauses.append(
+            "status = 'processed' AND expiry_date IS NOT NULL "
+            "AND expiry_dismissed_at IS NULL AND expiry_date <= ?"
+        )
+        params.append(horizon)
+    if query.get("duplicates"):
+        clauses.append(
+            "EXISTS (SELECT 1 FROM document_duplicate_candidates dc "
+            "WHERE dc.status = 'open' AND (dc.document_id = documents.id OR dc.candidate_id = documents.id))"
+        )
+    return clauses, params
+
+
+def _list_documents_query(
+    *,
+    q: str | None = None,
+    correspondent: str | None = None,
+    doc_type: str | None = None,
+    review_status: str | None = None,
+    saved_view: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    clauses, params = _saved_view_clauses(saved_view)
+    join = ""
+    if q:
+        join = "JOIN documents_fts ON documents_fts.rowid = documents.id"
+        clauses.append("documents_fts MATCH ?")
+        params.append(q)
+    if correspondent:
+        clauses.append("correspondent = ?")
+        params.append(correspondent)
+    if doc_type:
+        clauses.append("doc_type = ?")
+        params.append(doc_type)
+    if review_status:
+        clauses.append("review_status = ?")
+        params.append(review_status)
+
+    where = f"WHERE {' AND '.join(f'({clause})' for clause in clauses)}" if clauses else ""
+    rows = execute(
+        f"SELECT documents.* FROM documents {join} {where} ORDER BY documents.created_at DESC LIMIT ? OFFSET ?",
+        (*params, limit, offset),
+    ).fetchall()
+    return [_document_payload(r) for r in rows]
 
 
 @router.get("")
@@ -27,31 +130,20 @@ def list_documents(
     q: str | None = None,
     correspondent: str | None = None,
     doc_type: str | None = None,
+    review_status: str | None = None,
+    saved_view: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
-    if q:
-        rows = execute(
-            """SELECT documents.* FROM documents
-               JOIN documents_fts ON documents_fts.rowid = documents.id
-               WHERE documents_fts MATCH ?
-               ORDER BY documents.created_at DESC LIMIT ? OFFSET ?""",
-            (q, limit, offset),
-        ).fetchall()
-    else:
-        clauses, params = [], []
-        if correspondent:
-            clauses.append("correspondent = ?")
-            params.append(correspondent)
-        if doc_type:
-            clauses.append("doc_type = ?")
-            params.append(doc_type)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rows = execute(
-            f"SELECT * FROM documents {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
-        ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return _list_documents_query(
+        q=q,
+        correspondent=correspondent,
+        doc_type=doc_type,
+        review_status=review_status,
+        saved_view=saved_view,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/facets")
@@ -67,11 +159,43 @@ def get_facets():
     failed_count = execute(
         "SELECT COUNT(*) AS count FROM documents WHERE status = 'failed'"
     ).fetchone()["count"]
+    review_counts = execute(
+        """SELECT review_status, COUNT(*) AS count FROM documents
+           GROUP BY review_status ORDER BY count DESC"""
+    ).fetchall()
+    duplicate_count = execute(
+        """SELECT COUNT(DISTINCT document_id) AS count
+           FROM document_duplicate_candidates WHERE status = 'open'"""
+    ).fetchone()["count"]
     return {
         "correspondents": [_row_to_dict(r) for r in correspondents],
         "doc_types": [_row_to_dict(r) for r in doc_types],
         "failed_count": failed_count,
+        "review_counts": [_row_to_dict(r) for r in review_counts],
+        "duplicate_count": duplicate_count,
     }
+
+
+def _saved_view_count(key: str) -> int:
+    clauses, params = _saved_view_clauses(key)
+    where = f"WHERE {' AND '.join(f'({clause})' for clause in clauses)}" if clauses else ""
+    return execute(
+        f"SELECT COUNT(*) AS count FROM documents {where}",
+        tuple(params),
+    ).fetchone()["count"]
+
+
+@router.get("/saved-views")
+def list_saved_views():
+    rows = execute("SELECT * FROM saved_views ORDER BY sort_order, label").fetchall()
+    return [
+        {
+            **_row_to_dict(row),
+            "query": json.loads(row["query_json"]),
+            "count": _saved_view_count(row["key"]),
+        }
+        for row in rows
+    ]
 
 
 @router.get("/expiring")
@@ -83,11 +207,14 @@ def get_expiring_documents(days: int = 60):
     horizon = (date.today() + timedelta(days=days)).isoformat()
     rows = execute(
         """SELECT * FROM documents
-           WHERE status = 'processed' AND expiry_date IS NOT NULL AND expiry_date <= ?
+           WHERE status = 'processed'
+             AND expiry_date IS NOT NULL
+             AND expiry_dismissed_at IS NULL
+             AND expiry_date <= ?
            ORDER BY expiry_date ASC""",
         (horizon,),
     ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_document_payload(r) for r in rows]
 
 
 def _parse_ids(ids: str) -> list[int]:
@@ -149,7 +276,92 @@ def get_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
-    return _row_to_dict(row)
+    return _document_payload(row)
+
+
+@router.get("/{document_id}/events")
+def get_document_events(document_id: int):
+    if execute("SELECT id FROM documents WHERE id = ?", (document_id,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    rows = execute(
+        """SELECT * FROM document_events
+           WHERE document_id = ?
+           ORDER BY created_at DESC, id DESC""",
+        (document_id,),
+    ).fetchall()
+    return [_row_to_dict(row) for row in rows]
+
+
+@router.get("/{document_id}/duplicates")
+def get_document_duplicates(document_id: int):
+    if execute("SELECT id FROM documents WHERE id = ?", (document_id,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    rows = execute(
+        """SELECT dc.*, d.id AS match_id, d.original_filename, d.correspondent, d.doc_type, d.doc_date,
+                  d.amount_value, d.amount_currency
+           FROM document_duplicate_candidates dc
+           JOIN documents d ON d.id = CASE
+               WHEN dc.document_id = ? THEN dc.candidate_id
+               ELSE dc.document_id
+           END
+           WHERE dc.status = 'open' AND (dc.document_id = ? OR dc.candidate_id = ?)
+           ORDER BY dc.score DESC, dc.created_at DESC""",
+        (document_id, document_id, document_id),
+    ).fetchall()
+    return [_row_to_dict(row) for row in rows]
+
+
+@router.post("/duplicates/{candidate_id}/status")
+def update_duplicate_candidate(candidate_id: int, payload: dict):
+    status = payload.get("status")
+    if status not in {"open", "ignored", "confirmed"}:
+        raise HTTPException(status_code=422, detail="Neplatny duplicate status")
+    row = execute(
+        "SELECT * FROM document_duplicate_candidates WHERE id = ?",
+        (candidate_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Duplikatovy warning nenajdeny")
+    execute(
+        """UPDATE document_duplicate_candidates
+           SET status = ?, updated_at = datetime('now')
+           WHERE id = ?""",
+        (status, candidate_id),
+    )
+    for document_id in (row["document_id"], row["candidate_id"]):
+        add_document_event(
+            document_id,
+            "duplicate_status",
+            f"Duplikatovy warning #{candidate_id} oznaceny ako {status}",
+            actor="user",
+        )
+    return {"ok": True, "status": status}
+
+
+@router.post("/{document_id}/expiry-dismissal")
+def dismiss_expiry_alert(document_id: int):
+    row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    execute(
+        "UPDATE documents SET expiry_dismissed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (document_id,),
+    )
+    add_document_event(document_id, "expiry_dismissed", "Expiracne upozornenie oznacene ako vybavene", actor="user")
+    return get_document(document_id)
+
+
+@router.delete("/{document_id}/expiry-dismissal")
+def restore_expiry_alert(document_id: int):
+    row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    execute(
+        "UPDATE documents SET expiry_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
+        (document_id,),
+    )
+    add_document_event(document_id, "expiry_restored", "Expiracne upozornenie obnovene", actor="user")
+    return get_document(document_id)
 
 
 @router.get("/{document_id}/file")
@@ -165,11 +377,13 @@ def get_document_file(document_id: int, download: bool = False):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Subor sa na disku nenasiel (mozno zlyhalo spracovanie)")
 
+    media_type = _download_mime_type(path, row["mime_type"])
+    disposition = "attachment" if download or media_type in DOWNLOAD_ONLY_MIME_TYPES else "inline"
     return FileResponse(
         path,
-        media_type=row["mime_type"] or "application/octet-stream",
-        filename=row["original_filename"] if download else None,
-        content_disposition_type="attachment" if download else "inline",
+        media_type=media_type,
+        filename=row["original_filename"],
+        content_disposition_type=disposition,
     )
 
 
@@ -179,15 +393,79 @@ def update_document(document_id: int, payload: dict):
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
 
-    allowed = {"correspondent", "doc_type", "doc_date", "expiry_date", "amount_value", "amount_currency", "summary"}
+    allowed = {
+        "correspondent", "doc_type", "doc_date", "expiry_date", "expiry_dismissed_at",
+        "amount_value", "amount_currency", "summary", "review_status",
+    }
     fields = {k: v for k, v in payload.items() if k in allowed}
     if fields:
+        changes = {
+            key: {"from": row[key], "to": value}
+            for key, value in fields.items()
+            if row[key] != value
+        }
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         execute(
             f"UPDATE documents SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
             (*fields.values(), document_id),
         )
+        if changes:
+            add_document_event(
+                document_id,
+                "document_updated",
+                "Metadata dokumentu upravene",
+                actor="user",
+                metadata={"changes": changes},
+            )
     return get_document(document_id)
+
+
+@router.post("/{document_id}/review-status")
+def update_review_status(document_id: int, payload: dict):
+    review_status = payload.get("review_status")
+    allowed = {"na_kontrolu", "vybavene", "zaplatit", "zamietnute", "archiv"}
+    if review_status not in allowed:
+        raise HTTPException(status_code=422, detail="Neplatny review status")
+    row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    execute(
+        "UPDATE documents SET review_status = ?, updated_at = datetime('now') WHERE id = ?",
+        (review_status, document_id),
+    )
+    add_document_event(
+        document_id,
+        "review_status",
+        f"Review stav zmeneny na {review_status}",
+        actor="user",
+        metadata={"from": row["review_status"], "to": review_status},
+    )
+    return get_document(document_id)
+
+
+@router.post("/{document_id}/retry")
+def retry_document(document_id: int):
+    row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    if row["status"] != "failed":
+        raise HTTPException(status_code=409, detail="Retry je dostupny len pre failed dokumenty")
+    path = Path(row["stored_path"])
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Povodny failed subor sa na disku nenasiel")
+
+    add_document_event(document_id, "retry_started", "Spusteny manualny retry failed dokumentu", actor="user")
+    from ...ingest.pipeline import process
+
+    result = process(path, source="retry", source_detail=f"retry_of:{document_id}")
+    add_document_event(
+        document_id,
+        "retry_finished",
+        f"Manualny retry skoncil stavom {result.get('status')}",
+        actor="system",
+        metadata=result,
+    )
+    return result
 
 
 @router.delete("")

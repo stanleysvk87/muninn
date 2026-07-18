@@ -49,3 +49,22 @@ def park_duplicate(file_path: Path) -> Path:
 
     shutil.move(str(file_path), str(dest))
     return dest
+
+
+def park_failed(file_path: Path, source: str) -> Path:
+    """Move a failed source document into the archive so uploads/mail temp files
+    stay available for inspection and manual retry after their temp dirs vanish.
+    """
+    dest_dir = settings.archive_dir / "_failed" / _slugify(source)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    base_name = f"{date.today().isoformat()}_{file_path.stem}"
+    dest = dest_dir / f"{base_name}{file_path.suffix}"
+
+    i = 1
+    while dest.exists():
+        dest = dest_dir / f"{base_name}-{i}{file_path.suffix}"
+        i += 1
+
+    shutil.move(str(file_path), str(dest))
+    return dest

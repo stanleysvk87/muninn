@@ -18,6 +18,7 @@ services:
       # runs as non-root (UID 1000) because claude refuses
       # --dangerously-skip-permissions as root.
       - ${HOME}/.claude:/home/muninn/.claude:ro
+      - ${HOME}/.claude.json:/home/muninn/.claude.json:ro
       - ${MUNINN_CLAUDE_BIN_HOST_PATH}:/usr/local/bin/claude:ro
       - /mnt/storage/data/claude-global:/mnt/storage/data/claude-global:ro
       # Same idea for codex CLI -- reuse the host login/subscription instead

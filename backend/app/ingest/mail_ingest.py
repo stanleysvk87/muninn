@@ -15,6 +15,8 @@ from . import pipeline
 logger = logging.getLogger("muninn.mail")
 
 DEFAULT_POLL_INTERVAL_SECONDS = 300
+MAX_UID_ATTEMPTS = 3
+MIN_MAIL_IMAGE_ATTACHMENT_BYTES = 50_000
 
 
 async def run_forever() -> None:
@@ -65,39 +67,86 @@ def _poll_once(config: dict) -> None:
             return
 
         logger.info("Mail poll: %d novych sprav (UID > %d)", len(uids), last_uid)
+        failed_uids = get_setting("mail_failed_uids", {})
         for uid in uids:
-            _process_message(conn, uid)
-            last_uid = uid
-            set_setting("mail_last_uid", last_uid)
+            result = _process_message(conn, uid)
+            if result.get("ok"):
+                failed_uids.pop(str(uid), None)
+                set_setting("mail_failed_uids", failed_uids)
+                last_uid = uid
+                set_setting("mail_last_uid", last_uid)
+                continue
+
+            entry = failed_uids.get(str(uid), {})
+            attempts = int(entry.get("attempts") or 0) + 1
+            failed_uids[str(uid)] = {
+                "attempts": attempts,
+                "last_error": result.get("error") or "nezname zlyhanie",
+                "document_id": result.get("document_id"),
+            }
+            set_setting("mail_failed_uids", failed_uids)
+
+            if attempts >= MAX_UID_ATTEMPTS:
+                logger.error(
+                    "Mail poll: UID %d zlyhal %dx, presuvam do dead-letter a posuvam watermark",
+                    uid,
+                    attempts,
+                )
+                last_uid = uid
+                set_setting("mail_last_uid", last_uid)
+                continue
+
+            logger.warning(
+                "Mail poll: UID %d zlyhal (pokus %d/%d), watermark zostava na %d",
+                uid,
+                attempts,
+                MAX_UID_ATTEMPTS,
+                last_uid,
+            )
+            break
     finally:
         conn.logout()
 
 
-def _process_message(conn: imaplib.IMAP4_SSL, uid: int) -> None:
+def _process_message(conn: imaplib.IMAP4_SSL, uid: int) -> dict:
     status, msg_data = conn.uid("fetch", str(uid), "(RFC822)")
     if status != "OK" or not msg_data or msg_data[0] is None:
         logger.warning("Mail poll: fetch UID %d zlyhalo", uid)
-        return
+        return {"ok": False, "error": "fetch zlyhal"}
 
     message = email.message_from_bytes(msg_data[0][1])
     found_attachment = False
+    results = []
     for part in message.walk():
         filename = part.get_filename()
         payload = part.get_payload(decode=True)
         if not filename or not payload:
             continue
+        if not _should_process_part(part, filename, payload):
+            logger.info("Mail poll: UID %d preskakujem inline asset %s", uid, filename)
+            continue
         found_attachment = True
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
-            tmp.write(payload)
-            tmp_path = Path(tmp.name)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="muninn-mail-"))
+        tmp_path = tmp_dir / _safe_filename(filename, fallback=f"mail-{uid}.bin")
+        tmp_path.write_bytes(payload)
         try:
-            pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid}")
+            results.append(pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid}"))
         finally:
-            tmp_path.unlink(missing_ok=True)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if not found_attachment:
-        _process_body_only(message, uid)
+        results.append(_process_body_only(message, uid))
+
+    failed = [r for r in results if r and r.get("status") == "failed"]
+    if failed:
+        first = failed[0]
+        return {
+            "ok": False,
+            "document_id": first.get("document_id"),
+            "error": first.get("error_message") or "spracovanie dokumentu zlyhalo",
+        }
+    return {"ok": True}
 
 
 def _decode_subject(raw: str | None) -> str:
@@ -112,7 +161,38 @@ def _slugify(text: str) -> str:
     return slug or "mail"
 
 
-def _process_body_only(message: "email.message.Message", uid: int) -> None:
+def _safe_filename(raw: str, fallback: str) -> str:
+    try:
+        decoded = str(make_header(decode_header(raw)))
+    except (LookupError, UnicodeDecodeError, ValueError):
+        decoded = raw
+    name = Path(decoded.replace("\\", "/")).name.strip().strip(".")
+    name = re.sub(r"[\x00-\x1f]+", "", name)
+    name = re.sub(r"[/:]+", "-", name)
+    return name[:160] or fallback
+
+
+def _should_process_part(part: "email.message.Message", filename: str, payload: bytes) -> bool:
+    content_type = part.get_content_type() or ""
+    disposition = (part.get_content_disposition() or "").lower()
+    content_id = part.get("Content-ID")
+
+    if not content_type.startswith("image/"):
+        return True
+
+    if disposition == "attachment" and len(payload) >= MIN_MAIL_IMAGE_ATTACHMENT_BYTES:
+        return True
+
+    # HTML emails routinely carry logos, spacer bars, payment icons and status
+    # images as named MIME parts. They have filenames, but they are not user
+    # documents and should not pollute the archive.
+    if disposition == "inline" or content_id or len(payload) < MIN_MAIL_IMAGE_ATTACHMENT_BYTES:
+        return False
+
+    return True
+
+
+def _process_body_only(message: "email.message.Message", uid: int) -> dict:
     """Some senders (e.g. order-confirmation systems) put everything of value
     straight in the HTML/plain body with no attachment at all -- seen in
     production with a Bidfood order-status mail. Archive the body itself as
@@ -138,7 +218,7 @@ def _process_body_only(message: "email.message.Message", uid: int) -> None:
 
     if not body_bytes:
         logger.info("Mail poll: UID %d nema ani prilohu ani citatelne telo, preskakujem", uid)
-        return
+        return {"status": "processed", "duplicate": False}
 
     subject = _decode_subject(message.get("Subject"))
     filename = f"{_slugify(subject)[:80]}{suffix}"
@@ -147,6 +227,6 @@ def _process_body_only(message: "email.message.Message", uid: int) -> None:
     tmp_path = tmp_dir / filename
     tmp_path.write_bytes(body_bytes)
     try:
-        pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid} (telo spravy, bez prilohy)")
+        return pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid} (telo spravy, bez prilohy)")
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)

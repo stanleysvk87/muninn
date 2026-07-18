@@ -39,16 +39,20 @@ export default function Sidebar({ currentPage, onNavigate, user, onLogout }) {
         <button className="btn btn-ghost" onClick={() => setMobileOpen(true)} aria-label="Otvorit menu" style={{ padding: 6, minHeight: "auto" }}>
           <MenuIcon />
         </button>
-        <Logo size={22} style={{ color: "var(--color-blue-light)" }} />
-        <span style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>Muninn</span>
+        <button className="brand-button compact" onClick={() => go("dashboard")} aria-label="Muninn domov">
+          <Logo size={22} style={{ color: "var(--color-blue-light)" }} />
+          <span>Muninn</span>
+        </button>
       </div>
 
       <div className={`sidebar-backdrop ${mobileOpen ? "visible" : ""}`} onClick={() => setMobileOpen(false)} />
 
       <aside className={`sidebar ${slim ? "slim" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-header">
-          <Logo size={24} style={{ color: "var(--color-blue-light)", flex: "none" }} />
-          <span className="brand-name">Muninn</span>
+          <button className="brand-button compact" onClick={() => go("dashboard")} aria-label="Muninn domov">
+            <Logo size={24} style={{ color: "var(--color-blue-light)", flex: "none" }} />
+            <span className="brand-name">Muninn</span>
+          </button>
           {mobileOpen && (
             <button
               className="btn btn-ghost"

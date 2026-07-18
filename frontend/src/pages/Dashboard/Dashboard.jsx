@@ -15,12 +15,19 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
   const [recent, setRecent] = useState(null);
   const [facets, setFacets] = useState(null);
   const [expiring, setExpiring] = useState(null);
+  const [savedViews, setSavedViews] = useState(null);
 
   useEffect(() => {
     api.get("/documents", { params: { limit: 8 } }).then((res) => setRecent(res.data));
     api.get("/documents/facets").then((res) => setFacets(res.data));
     api.get("/documents/expiring").then((res) => setExpiring(res.data));
+    api.get("/documents/saved-views").then((res) => setSavedViews(res.data));
   }, []);
+
+  async function dismissExpiry(docId) {
+    await api.post(`/documents/${docId}/expiry-dismissal`);
+    setExpiring((items) => (items || []).filter((doc) => doc.id !== docId));
+  }
 
   const totalDocs = facets ? facets.correspondents.reduce((sum, c) => sum + c.count, 0) : null;
   const totalCorrespondents = facets ? facets.correspondents.length : null;
@@ -44,7 +51,7 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginBottom: 24 }}>
-        <Card>
+        <Card hover onClick={() => onNavigate("search")} style={{ cursor: "pointer" }}>
           <div className="eyebrow">Dokumentov</div>
           <div style={{ fontSize: 32, fontFamily: "var(--font-display)", marginTop: 6 }}>{totalDocs ?? "-"}</div>
         </Card>
@@ -59,7 +66,7 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
           </Card>
         )}
         {expiringCount > 0 && (
-          <Card hover onClick={() => onNavigate("search")} style={{ cursor: "pointer", borderColor: "var(--color-gold)" }}>
+          <Card hover onClick={() => onNavigate("search", null, "?expiring=1")} style={{ cursor: "pointer", borderColor: "var(--color-gold)" }}>
             <div className="eyebrow" style={{ color: "var(--color-gold)" }}>Blizi sa expiracia</div>
             <div style={{ fontSize: 32, fontFamily: "var(--font-display)", marginTop: 6, color: "var(--color-gold)" }}>{expiringCount}</div>
           </Card>
@@ -78,7 +85,8 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
                   key={doc.id}
                   hover
                   onClick={() => onOpenDocument(doc.id)}
-                  style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", padding: 16 }}
+                  className="expiring-card"
+                  style={{ cursor: "pointer" }}
                 >
                   <div>
                     <div style={{ fontWeight: 600 }}>{doc.correspondent}</div>
@@ -86,14 +94,25 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
                       {doc.doc_type} · plati do {doc.expiry_date}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontFamily: "var(--font-mono)",
-                      color: overdue ? "var(--color-warning)" : "var(--color-gold)",
-                    }}
-                  >
-                    {overdue ? `po termine ${Math.abs(days)} dni` : `o ${days} dni`}
+                  <div className="expiring-actions">
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontFamily: "var(--font-mono)",
+                        color: overdue ? "var(--color-warning)" : "var(--color-gold)",
+                      }}
+                    >
+                      {overdue ? `po termine ${Math.abs(days)} dni` : `o ${days} dni`}
+                    </div>
+                    <Button
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dismissExpiry(doc.id);
+                      }}
+                    >
+                      Vybavene
+                    </Button>
                   </div>
                 </Card>
               );
@@ -101,6 +120,26 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
           </div>
         </>
       )}
+
+      <h3 style={{ marginBottom: 12 }}>Pracovne pohlady</h3>
+      <div className="saved-view-grid">
+        {(savedViews || []).map((view) => (
+          <Card
+            key={view.key}
+            hover
+            onClick={() => onNavigate("search", null, view.key === "expiring" ? "?expiring=1" : `?view=${view.key}`)}
+            className="saved-view-card"
+            style={{ cursor: "pointer" }}
+          >
+            <div>
+              <div className="eyebrow">{view.label}</div>
+              <p>{view.description}</p>
+            </div>
+            <strong>{view.count}</strong>
+          </Card>
+        ))}
+        {savedViews === null && <div style={{ color: "var(--color-text-secondary)" }}>Nacitavam pohlady...</div>}
+      </div>
 
       <h3 style={{ marginBottom: 12 }}>Naposledy pridane</h3>
       {recent === null && <div style={{ color: "var(--color-text-secondary)" }}>Nacitavam...</div>}

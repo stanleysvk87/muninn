@@ -22,6 +22,7 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [diagnostics, setDiagnostics] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -29,13 +30,29 @@ export default function Settings() {
       api.get("/settings/mail"),
       api.get("/settings/ai-provider"),
       api.get("/settings/usage"),
-    ]).then(([f, m, a, u]) => {
+      api.get("/settings/diagnostics"),
+    ]).then(([f, m, a, u, d]) => {
       setFolders(f.data.folders);
       setMail(m.data);
       setAiMode(a.data.mode);
       setUsage(u.data);
+      setDiagnostics(d.data);
     });
   }, []);
+
+  async function refreshDiagnostics() {
+    const [u, d] = await Promise.all([
+      api.get("/settings/usage"),
+      api.get("/settings/diagnostics"),
+    ]);
+    setUsage(u.data);
+    setDiagnostics(d.data);
+  }
+
+  async function retryFailedDocument(documentId) {
+    await api.post(`/documents/${documentId}/retry`);
+    refreshDiagnostics();
+  }
 
   async function addFolder() {
     setFolderError(null);
@@ -156,20 +173,24 @@ export default function Settings() {
           <p style={{ color: "var(--color-text-secondary)" }}>Zatial ziadne spracovane dokumenty</p>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+            <div className="settings-metrics">
               <div>
                 <div className="eyebrow">Spracovanych dokumentov</div>
                 <div style={{ fontSize: 20 }}>{usage.total.documents}</div>
               </div>
               <div>
-                <div className="eyebrow">Odhadovane naklady</div>
+                <div className="eyebrow">API/Claude token naklady</div>
                 <div style={{ fontSize: 20 }}>${usage.total.cost_usd.toFixed(4)}</div>
               </div>
               <div>
-                <div className="eyebrow">Tokeny (in/out)</div>
+                <div className="eyebrow">Merane tokeny in/out</div>
                 <div style={{ fontSize: 20 }}>
                   {usage.total.input_tokens.toLocaleString()} / {usage.total.output_tokens.toLocaleString()}
                 </div>
+              </div>
+              <div>
+                <div className="eyebrow">CLI volania</div>
+                <div style={{ fontSize: 20 }}>{usage.metering?.cli_documents ?? 0}</div>
               </div>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -195,9 +216,85 @@ export default function Settings() {
               </tbody>
             </table>
             <p style={{ marginTop: 12, fontSize: 12, color: "var(--color-text-secondary)" }}>
-              Naklady pre claude/codex CLI su realne (z --output-format json), API fallback je odhad podla
-              standardneho cennika Sonnet 5. Presiel claude/codex cez predplatne, tak sa realne neuctuje extra.
+              {usage.metering?.note}
             </p>
+          </>
+        )}
+      </Card>
+
+      <Card>
+        <h3 style={{ marginBottom: 12 }}>Technicky stav</h3>
+        {!diagnostics ? (
+          <p style={{ color: "var(--color-text-secondary)" }}>Nacitavam...</p>
+        ) : (
+          <>
+            <div className="settings-metrics">
+              <div>
+                <div className="eyebrow">AI rezim</div>
+                <div>{diagnostics.ai_mode}</div>
+              </div>
+              <div>
+                <div className="eyebrow">Claude CLI</div>
+                <div style={{ color: diagnostics.cli.claude.available ? "var(--color-success)" : "var(--color-warning)" }}>
+                  {diagnostics.cli.claude.available ? "dostupny" : "chyba"}
+                </div>
+              </div>
+              <div>
+                <div className="eyebrow">Codex CLI</div>
+                <div style={{ color: diagnostics.cli.codex.available ? "var(--color-success)" : "var(--color-warning)" }}>
+                  {diagnostics.cli.codex.available ? "dostupny" : "chyba"}
+                </div>
+              </div>
+              <div>
+                <div className="eyebrow">Mail UID / failed</div>
+                <div>{diagnostics.mail.last_uid} / {diagnostics.mail.failed_uid_count}</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12, color: "var(--color-text-secondary)", fontSize: 13 }}>
+              Provider chain: {diagnostics.provider_chain.map((p) => p.name).join(" -> ") || "-"}
+            </div>
+            {diagnostics.documents.recent_failed.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>Posledne chyby</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {diagnostics.documents.recent_failed.map((row) => (
+                    <div key={row.id} className="diagnostic-row">
+                      <strong>#{row.id} {row.original_filename}</strong>
+                      <span>{row.ai_provider || "provider?"}: {row.error_message || "bez detailu"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {diagnostics.documents.recent_failed.length === 0 && (
+              <p style={{ marginTop: 12, color: "var(--color-text-secondary)" }}>Ziadne failed dokumenty v aktivnej DB.</p>
+            )}
+            {diagnostics.jobs?.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>Posledne joby</div>
+                <div className="job-log-list">
+                  {diagnostics.jobs.map((job) => (
+                    <div key={job.id} className="job-log-row">
+                      <div>
+                        <strong>#{job.id} {job.original_filename}</strong>
+                        <span>
+                          {job.status} · {job.source}{job.ai_provider ? ` · ${job.ai_provider}` : ""}
+                        </span>
+                        {job.error_message && <small>{job.error_message}</small>}
+                      </div>
+                      {job.status === "failed" && job.document_id && (
+                        <Button variant="secondary" onClick={() => retryFailedDocument(job.document_id)}>
+                          Retry
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button variant="secondary" onClick={refreshDiagnostics} style={{ marginTop: 12 }}>
+              Obnovit stav
+            </Button>
           </>
         )}
       </Card>

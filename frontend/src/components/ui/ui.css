@@ -46,6 +46,154 @@
   border-radius: 12px;
   padding: 24px;
 }
+
+.breakable-text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.expiring-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.expiring-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.filter-toolbar {
+  display: none;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.settings-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.diagnostic-row {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--color-ink-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.saved-view-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.saved-view-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+}
+
+.saved-view-card p {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.saved-view-card strong {
+  color: var(--color-blue-light);
+  font-family: var(--font-display);
+  font-size: 24px;
+}
+
+.evidence-list,
+.duplicate-list,
+.timeline-list,
+.job-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.evidence-row,
+.duplicate-row,
+.timeline-row,
+.job-log-row {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-ink-secondary);
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.evidence-row strong,
+.duplicate-row strong,
+.timeline-row strong,
+.job-log-row strong {
+  display: block;
+}
+
+.evidence-row span,
+.duplicate-row span,
+.timeline-row span,
+.job-log-row span,
+.job-log-row small {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.evidence-row small,
+.timeline-row small {
+  color: var(--color-blue-light);
+  font-family: var(--font-mono);
+}
+
+.duplicate-row,
+.job-log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.duplicate-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.duplicate-actions .btn,
+.job-log-row .btn {
+  min-height: 34px;
+  padding: 0 10px;
+}
 .card-hover:hover {
   border-color: var(--color-border-strong);
   transform: translateY(-2px);
@@ -137,6 +285,72 @@
   cursor: pointer;
 }
 
+.mobile-data-list {
+  display: none;
+}
+
+.mobile-doc-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+.mobile-doc-row:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.mobile-doc-row:last-child {
+  border-radius: 0 0 8px 8px;
+}
+
+.mobile-doc-row:only-child {
+  border-radius: 8px;
+}
+
+.mobile-doc-row + .mobile-doc-row {
+  border-top: none;
+}
+
+.mobile-doc-row input {
+  margin-top: 3px;
+}
+
+.mobile-doc-main {
+  min-width: 0;
+}
+
+.mobile-doc-main strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.mobile-doc-main span,
+.mobile-doc-main p {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.mobile-doc-main p {
+  margin: 8px 0 0;
+}
+
+.mobile-doc-actions {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mobile-doc-actions .btn {
+  min-height: 32px;
+  padding: 0 8px;
+}
+
 @media (max-width: 640px) {
   .hide-mobile {
     display: none;
@@ -144,5 +358,43 @@
   .page-header {
     flex-direction: column;
     align-items: flex-start !important;
+  }
+  .detail-actions .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+  }
+  .expiring-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .expiring-actions {
+    justify-content: space-between;
+  }
+  .filter-toolbar {
+    display: flex;
+  }
+  .filter-chips {
+    max-height: 38px;
+    overflow: hidden;
+  }
+  .filter-chips.open {
+    max-height: none;
+  }
+  .settings-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .duplicate-row,
+  .job-log-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .duplicate-actions {
+    justify-content: space-between;
+  }
+  .mobile-data-list {
+    display: block;
+  }
+  .mobile-data-list + .data-table-wrapper {
+    display: none;
   }
 }

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from .base import ExtractionError, ExtractionResult
-from .prompt import build_prompt
+from .prompt import build_prompt, read_inline_text
 
 JSON_SPAN_RE = re.compile(r"\{.*\}", re.DOTALL)
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -16,7 +16,7 @@ class CodexCLIProvider:
     model = "default"
 
     def extract(self, file_path: Path) -> ExtractionResult:
-        prompt = build_prompt(file_path.name)
+        prompt = build_prompt(file_path.name, read_inline_text(file_path))
 
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as out_f:
             output_path = Path(out_f.name)
@@ -73,6 +73,7 @@ class CodexCLIProvider:
             expiry_date=data.get("expiry_date"),
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
+            evidence=data.get("evidence") if isinstance(data.get("evidence"), list) else None,
             raw_response=result_text,
             # codex exec -o only writes the final text, not a cost/usage JSON
             # wrapper like `claude -p --output-format json` -- unknown for now.

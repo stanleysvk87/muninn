@@ -17,29 +17,37 @@ const PATH_BY_PAGE = {
   settings: "/nastavenia",
 };
 
-function parsePath(path) {
+function parsePath(path, search = "") {
   if (path.startsWith("/dokumenty/")) {
     return { page: "document", id: path.slice("/dokumenty/".length) };
   }
-  if (path === "/hladanie") return { page: "search" };
+  if (path === "/hladanie") {
+    const params = new URLSearchParams(search);
+    return {
+      page: "search",
+      expiring: params.get("expiring") === "1",
+      savedView: params.get("view") || null,
+    };
+  }
   if (path === "/nahrat") return { page: "upload" };
   if (path === "/nastavenia") return { page: "settings" };
   return { page: "dashboard" };
 }
 
-function navigate(page, id) {
+function navigate(page, id, search = "") {
   const path = page === "document" ? `/dokumenty/${id}` : PATH_BY_PAGE[page] || "/";
-  window.history.pushState({}, "", path);
+  const suffix = page === "document" ? "" : search;
+  window.history.pushState({}, "", `${path}${suffix}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 export default function App() {
   const [user, setUser] = useState(undefined); // undefined = loading, null = not logged in
-  const [route, setRoute] = useState(() => parsePath(window.location.pathname));
+  const [route, setRoute] = useState(() => parsePath(window.location.pathname, window.location.search));
 
   useEffect(() => {
     function onPop() {
-      setRoute(parsePath(window.location.pathname));
+      setRoute(parsePath(window.location.pathname, window.location.search));
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -81,7 +89,14 @@ export default function App() {
           {route.page === "dashboard" && (
             <Dashboard onOpenDocument={(id) => navigate("document", id)} onNavigate={navigate} />
           )}
-          {route.page === "search" && <Search onOpenDocument={(id) => navigate("document", id)} />}
+          {route.page === "search" && (
+            <Search
+              expiringOnly={route.expiring}
+              savedView={route.savedView}
+              onOpenDocument={(id) => navigate("document", id)}
+              onNavigate={navigate}
+            />
+          )}
           {route.page === "upload" && <Upload />}
           {route.page === "document" && <DocumentDetail documentId={route.id} onBack={() => navigate("dashboard")} />}
           {route.page === "settings" && <Settings />}

@@ -22,8 +22,17 @@ expiry_date (datum platnosti/expiracie/obnovy vo formate YYYY-MM-DD - napr. kedy
 kedy vyprsa zmluva alebo doklad totoznosti/vodicsky preukaz - alebo null ak sa dokumentu netyka
 ziadny takyto datum),
 summary (1-2 vety po slovensky, o com dokument je),
+full_text ({full_text_instruction}),
 evidence (pole 0-5 objektov s poliami field, value, snippet, confidence; snippet je kratky citat/parafraza
 casti dokumentu, confidence je cislo 0-1; ak si nie si isty alebo evidence nevies uviest, vrat prazdne pole)."""
+
+FULL_TEXT_INSTRUCTION_INLINE = (
+    "obsah dokumentu je uz vlozeny vyssie v tomto prompte, takze ho tu NEOPAKUJ - vrat null"
+)
+FULL_TEXT_INSTRUCTION_TRANSCRIBE = (
+    "cely citatelny text dokumentu (presna transkripcia vsetkeho textu na obrazku/v dokumente, "
+    "pouzije sa len na fulltextove vyhladavanie) - ak dokument neobsahuje ziadny citatelny text, vrat null"
+)
 
 
 def read_inline_text(path: Path) -> str | None:
@@ -42,7 +51,12 @@ def read_inline_text(path: Path) -> str | None:
 
 
 def build_prompt(file_path: str, document_text: str | None = None) -> str:
-    prompt = EXTRACTION_PROMPT_TEMPLATE.format(file_path=file_path)
+    full_text_instruction = (
+        FULL_TEXT_INSTRUCTION_INLINE if document_text else FULL_TEXT_INSTRUCTION_TRANSCRIBE
+    )
+    prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+        file_path=file_path, full_text_instruction=full_text_instruction
+    )
     if not document_text:
         return prompt
     return f"{prompt}\n\n--- ZACIATOK OBSAHU DOKUMENTU ---\n{document_text}\n--- KONIEC OBSAHU DOKUMENTU ---"

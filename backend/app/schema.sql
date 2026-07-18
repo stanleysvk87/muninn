@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS documents (
     output_tokens       INTEGER,
     review_status       TEXT NOT NULL DEFAULT 'na_kontrolu',
     evidence_json       TEXT,
+    full_text           TEXT,
     status              TEXT NOT NULL DEFAULT 'processed',
     error_message       TEXT,
     created_at          TEXT NOT NULL,
@@ -122,26 +123,8 @@ CREATE TABLE IF NOT EXISTS saved_views (
     updated_at      TEXT NOT NULL
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-    correspondent,
-    doc_type,
-    summary,
-    original_filename,
-    content='documents',
-    content_rowid='id'
-);
-
-CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
-    INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename)
-    VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename);
-END;
-CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename)
-    VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename);
-END;
-CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename)
-    VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename);
-    INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename)
-    VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename);
-END;
+-- documents_fts (with full_text) and its triggers are created in db.py's
+-- _migrate() -- FTS5 virtual tables can't get a column added via ALTER
+-- TABLE, so an already-existing production index needs a drop+rebuild
+-- rather than a CREATE ... IF NOT EXISTS here, which would just silently
+-- keep the old 4-column shape forever on an existing DB.

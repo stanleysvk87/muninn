@@ -9,6 +9,7 @@ class ExtractionResult(TypedDict):
     expiry_date: str | None
     amount_raw: str | None
     summary: str
+    full_text: str | None
     evidence: list[dict] | None
     raw_response: str
     cost_usd: float | None

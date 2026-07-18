@@ -74,6 +74,7 @@ class ClaudeCLIProvider:
             expiry_date=data.get("expiry_date"),
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
+            full_text=data.get("full_text") or None,
             evidence=data.get("evidence") if isinstance(data.get("evidence"), list) else None,
             raw_response=result_text,
             cost_usd=outer.get("total_cost_usd"),

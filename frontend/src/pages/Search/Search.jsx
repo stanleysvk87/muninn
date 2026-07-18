@@ -8,6 +8,15 @@ import LoadingBlock from "../../components/ui/LoadingBlock.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import StatusBadge from "../../components/ui/StatusBadge.jsx";
 
+function Highlighted({ text }) {
+  if (!text) return null;
+  const parts = text.split(/(<<[^>]*>>)/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^<<([^>]*)>>$/);
+    return match ? <mark key={i}>{match[1]}</mark> : <span key={i}>{part}</span>;
+  });
+}
+
 const COLUMNS = [
   { key: "correspondent", label: "Firma / osoba" },
   { key: "doc_type", label: "Typ" },
@@ -25,7 +34,11 @@ const COLUMNS = [
     label: "Zhrnutie",
     sortable: false,
     hideOnMobile: true,
-    render: (r) => <span style={{ color: "var(--color-text-secondary)" }}>{(r.summary || "").slice(0, 80)}</span>,
+    render: (r) => (
+      <span style={{ color: "var(--color-text-secondary)" }}>
+        {r.match_snippet ? <Highlighted text={r.match_snippet} /> : (r.summary || "").slice(0, 80)}
+      </span>
+    ),
   },
   {
     key: "actions",
@@ -226,7 +239,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
               <div className="mobile-doc-main">
                 <strong>{row.correspondent}</strong>
                 <span>{row.doc_type || "-"}{row.expiry_date ? ` · plati do ${row.expiry_date}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
-                {row.summary && <p>{row.summary.slice(0, 120)}</p>}
+                {row.match_snippet ? <p><Highlighted text={row.match_snippet} /></p> : row.summary && <p>{row.summary.slice(0, 120)}</p>}
               </div>
               <div className="mobile-doc-actions" onClick={(e) => e.stopPropagation()}>
                 <StatusBadge status={row.status} />

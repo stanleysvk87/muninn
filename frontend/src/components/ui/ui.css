@@ -398,3 +398,10 @@
     display: none;
   }
 }
+
+mark {
+  background: var(--color-gold-soft, var(--color-gold));
+  color: var(--color-ink);
+  padding: 0 2px;
+  border-radius: 2px;
+}

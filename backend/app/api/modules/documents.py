@@ -104,8 +104,13 @@ def _list_documents_query(
 ) -> list[dict]:
     clauses, params = _saved_view_clauses(saved_view)
     join = ""
+    select_extra = ""
     if q:
         join = "JOIN documents_fts ON documents_fts.rowid = documents.id"
+        # column index -1 lets FTS5 pick whichever column actually matched
+        # (correspondent/doc_type/summary/original_filename/full_text)
+        # instead of guessing one in advance.
+        select_extra = ", snippet(documents_fts, -1, '<<', '>>', ' ... ', 20) AS match_snippet"
         clauses.append("documents_fts MATCH ?")
         params.append(q)
     if correspondent:
@@ -120,7 +125,8 @@ def _list_documents_query(
 
     where = f"WHERE {' AND '.join(f'({clause})' for clause in clauses)}" if clauses else ""
     rows = execute(
-        f"SELECT documents.* FROM documents {join} {where} ORDER BY documents.created_at DESC LIMIT ? OFFSET ?",
+        f"SELECT documents.*{select_extra} FROM documents {join} {where} "
+        f"ORDER BY documents.created_at DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
     ).fetchall()
     return [_document_payload(r) for r in rows]

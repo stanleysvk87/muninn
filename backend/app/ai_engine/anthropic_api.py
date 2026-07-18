@@ -17,6 +17,7 @@ EXTRACTION_SCHEMA = {
         "expiry_date": {"type": ["string", "null"]},
         "amount": {"type": ["string", "null"]},
         "summary": {"type": "string"},
+        "full_text": {"type": ["string", "null"]},
         "evidence": {
             "type": "array",
             "items": {
@@ -32,7 +33,7 @@ EXTRACTION_SCHEMA = {
             },
         },
     },
-    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary", "evidence"],
+    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary", "full_text", "evidence"],
     "additionalProperties": False,
 }
 
@@ -107,6 +108,7 @@ class AnthropicAPIProvider:
             expiry_date=data_json.get("expiry_date"),
             amount_raw=data_json.get("amount"),
             summary=data_json.get("summary") or "",
+            full_text=data_json.get("full_text") or None,
             evidence=data_json.get("evidence") if isinstance(data_json.get("evidence"), list) else None,
             raw_response=text,
             cost_usd=cost_usd,

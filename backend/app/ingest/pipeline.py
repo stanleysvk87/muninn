@@ -403,6 +403,15 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
             or _convert_html_if_needed(staged)
             or staged
         )
+        # If a conversion above produced a .txt, that's real extracted text
+        # (free, already computed) -- prefer it over asking the AI to
+        # transcribe it again in its JSON output. Only images/other formats
+        # without a converter fall back to the AI's own full_text field.
+        converted_text = (
+            staged.read_text(encoding="utf-8", errors="replace")
+            if staged.suffix.lower() == ".txt"
+            else None
+        )
 
         # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
         # fails at call time (e.g. usage limits hit, not just "not installed"),
@@ -486,21 +495,22 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
     dest = place(file_path, result["correspondent"], result["doc_type"], result["doc_date"])
     stored_path = str(dest)
     amount_value, amount_currency = _parse_amount(result["amount_raw"])
+    full_text = converted_text or result.get("full_text")
 
     cur = execute(
         """INSERT INTO documents
              (original_filename, stored_path, correspondent, doc_type, doc_date, expiry_date,
               amount_value, amount_currency, amount_raw, summary, source, source_detail,
               ai_provider, ai_model, ai_raw_response, mime_type, file_size, file_hash, cost_usd,
-              input_tokens, output_tokens, evidence_json, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
+              input_tokens, output_tokens, evidence_json, full_text, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
         (
             original_filename, stored_path, result["correspondent"], result["doc_type"],
             result["doc_date"], result["expiry_date"], amount_value, amount_currency,
             result["amount_raw"], result["summary"], source, source_detail, provider.name,
             provider.model, result["raw_response"], mime_type, file_size, file_hash,
             result["cost_usd"], result["input_tokens"], result["output_tokens"],
-            json.dumps(result.get("evidence") or [], ensure_ascii=False), now, now,
+            json.dumps(result.get("evidence") or [], ensure_ascii=False), full_text, now, now,
         ),
     )
     document_id = cur.lastrowid

@@ -20,7 +20,42 @@ _DOCUMENTS_COLUMNS = {
     "expiry_notified_at": "TEXT",
     "notify_recurrence": "TEXT",
     "next_recurrence_at": "TEXT",
+    "full_text": "TEXT",
 }
+
+_FTS_REBUILD_SQL = """
+    DROP TRIGGER IF EXISTS documents_ai;
+    DROP TRIGGER IF EXISTS documents_ad;
+    DROP TRIGGER IF EXISTS documents_au;
+    DROP TABLE IF EXISTS documents_fts;
+
+    CREATE VIRTUAL TABLE documents_fts USING fts5(
+        correspondent,
+        doc_type,
+        summary,
+        original_filename,
+        full_text,
+        content='documents',
+        content_rowid='id'
+    );
+
+    CREATE TRIGGER documents_ai AFTER INSERT ON documents BEGIN
+        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename, full_text)
+        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename, new.full_text);
+    END;
+    CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN
+        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename, full_text)
+        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename, old.full_text);
+    END;
+    CREATE TRIGGER documents_au AFTER UPDATE ON documents BEGIN
+        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename, full_text)
+        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename, old.full_text);
+        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename, full_text)
+        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename, new.full_text);
+    END;
+
+    INSERT INTO documents_fts(documents_fts) VALUES('rebuild');
+"""
 
 _DEFAULT_SAVED_VIEWS = {
     "review": {
@@ -66,6 +101,14 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON documents(expiry_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_review_status ON documents(review_status)")
+
+    # FTS5 virtual tables can't get a column added via ALTER TABLE -- if
+    # documents_fts doesn't exist yet (fresh DB) or predates full_text (an
+    # existing production index), drop and recreate it against the now-
+    # guaranteed-to-exist full_text column, then rebuild its contents.
+    fts_columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents_fts)")}
+    if "full_text" not in fts_columns:
+        conn.executescript(_FTS_REBUILD_SQL)
     now = "datetime('now')"
     for key, view in _DEFAULT_SAVED_VIEWS.items():
         conn.execute(

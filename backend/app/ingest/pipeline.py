@@ -3,6 +3,8 @@ import mimetypes
 import re
 import shutil
 import tempfile
+import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +38,32 @@ def _downscale_image(path: Path, mime_type: str) -> None:
         # Not a format Pillow understands (or a truncated file) -- let the AI
         # provider deal with the original, this isn't fatal to the job.
         pass
+
+
+def _convert_odt_if_needed(path: Path) -> Path | None:
+    """OpenDocument Text (.odt) is a zip container -- the AI only gets the
+    read-only `Read` tool (no unzip/bash access, see docs/adr on the
+    sandboxing), so handing it the raw binary makes it spin uselessly until
+    the subprocess timeout instead of failing fast (seen in production: a
+    dropped .odt timed out after 120s twice in a row). Extract the plain
+    text server-side so there's something legible to read. Only the staged
+    AI-facing copy is affected -- the original .odt is still what gets
+    archived."""
+    if path.suffix.lower() != ".odt":
+        return None
+    try:
+        with zipfile.ZipFile(path) as zf, zf.open("content.xml") as f:
+            tree = ET.parse(f)
+    except (zipfile.BadZipFile, KeyError, ET.ParseError, OSError):
+        return None
+
+    text = "\n".join(t.strip() for t in tree.getroot().itertext() if t.strip())
+    if not text:
+        return None
+
+    text_path = path.with_suffix(".txt")
+    text_path.write_text(text, encoding="utf-8")
+    return text_path
 
 
 def _parse_amount(amount_raw: str | None) -> tuple[float | None, str | None]:
@@ -83,6 +111,7 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         staged = Path(tmp) / original_filename
         shutil.copy2(file_path, staged)
         _downscale_image(staged, mime_type)
+        staged = _convert_odt_if_needed(staged) or staged
 
         # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
         # fails at call time (e.g. usage limits hit, not just "not installed"),

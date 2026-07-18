@@ -3,6 +3,7 @@
 /backend/archive/
 /data/
 /archive/
+*.bak-*/
 *.db
 *.pyc
 __pycache__/

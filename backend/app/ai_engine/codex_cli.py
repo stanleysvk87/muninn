@@ -21,9 +21,15 @@ class CodexCLIProvider:
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as out_f:
             output_path = Path(out_f.name)
 
+        # POZOR: prompt musi byt HNED za "exec", pred -i/--image -- je to
+        # variadicky flag (num_args = 1..) rovnako ako claude -p --add-dir/
+        # --allowedTools, a zozerie nasledujuci argument ako dalsiu prilohu
+        # namiesto promptu, co necha PROMPT prazdny a codex skonci s "No
+        # prompt provided via stdin".
         cmd = [
             "codex",
             "exec",
+            prompt,
             "-C",
             str(file_path.parent),
             "-s",
@@ -35,7 +41,6 @@ class CodexCLIProvider:
         ]
         if file_path.suffix.lower() in IMAGE_SUFFIXES:
             cmd += ["-i", str(file_path)]
-        cmd.append(prompt)
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)

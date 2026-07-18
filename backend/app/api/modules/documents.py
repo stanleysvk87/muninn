@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import zipfile
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -71,6 +72,22 @@ def get_facets():
         "doc_types": [_row_to_dict(r) for r in doc_types],
         "failed_count": failed_count,
     }
+
+
+@router.get("/expiring")
+def get_expiring_documents(days: int = 60):
+    """Documents whose expiry_date (insurance renewal, contract/ID expiry --
+    whatever the AI could find) falls within the next `days`. Includes
+    already-overdue ones (expiry_date < today) so nothing silently slips by
+    unnoticed."""
+    horizon = (date.today() + timedelta(days=days)).isoformat()
+    rows = execute(
+        """SELECT * FROM documents
+           WHERE status = 'processed' AND expiry_date IS NOT NULL AND expiry_date <= ?
+           ORDER BY expiry_date ASC""",
+        (horizon,),
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
 
 
 def _parse_ids(ids: str) -> list[int]:
@@ -162,7 +179,7 @@ def update_document(document_id: int, payload: dict):
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
 
-    allowed = {"correspondent", "doc_type", "doc_date", "amount_value", "amount_currency", "summary"}
+    allowed = {"correspondent", "doc_type", "doc_date", "expiry_date", "amount_value", "amount_currency", "summary"}
     fields = {k: v for k, v in payload.items() if k in allowed}
     if fields:
         set_clause = ", ".join(f"{k} = ?" for k in fields)

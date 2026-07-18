@@ -9,6 +9,9 @@ doc_type (kratky slovensky nazov typu dokumentu, napr. "faktura", "zmluva", "rod
 "poistka", "doklad", "ine" - podla toho, co dokument skutocne je),
 date (datum dokumentu vo formate YYYY-MM-DD, alebo null ak sa neda zistit),
 amount (suma s menou ako text, napr. "123.45 EUR", alebo null ak sa dokumentu netyka ziadna suma),
+expiry_date (datum platnosti/expiracie/obnovy vo formate YYYY-MM-DD - napr. kedy konci poistka,
+kedy vyprsa zmluva alebo doklad totoznosti/vodicsky preukaz - alebo null ak sa dokumentu netyka
+ziadny takyto datum),
 summary (1-2 vety po slovensky, o com dokument je)."""
 
 

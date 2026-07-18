@@ -71,6 +71,7 @@ class ClaudeCLIProvider:
             correspondent=data.get("correspondent") or "neznama-firma",
             doc_type=data.get("doc_type") or "other",
             doc_date=data.get("date"),
+            expiry_date=data.get("expiry_date"),
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
             raw_response=result_text,

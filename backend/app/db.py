@@ -13,6 +13,7 @@ _DOCUMENTS_COLUMNS = {
     "cost_usd": "REAL",
     "input_tokens": "INTEGER",
     "output_tokens": "INTEGER",
+    "expiry_date": "TEXT",
 }
 
 
@@ -24,6 +25,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for column, coltype in _DOCUMENTS_COLUMNS.items():
         if column not in existing:
             conn.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON documents(expiry_date)")
     conn.commit()
 
 

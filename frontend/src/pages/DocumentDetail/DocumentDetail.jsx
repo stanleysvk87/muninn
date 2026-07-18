@@ -56,6 +56,7 @@ export default function DocumentDetail({ documentId, onBack }) {
       correspondent: form.correspondent,
       doc_type: form.doc_type,
       doc_date: form.doc_date,
+      expiry_date: form.expiry_date,
       summary: form.summary,
     });
     setDoc(res.data);
@@ -82,6 +83,7 @@ export default function DocumentDetail({ documentId, onBack }) {
           <>
             <Field label="Typ" value={doc.doc_type} />
             <Field label="Datum" value={doc.doc_date} />
+            {doc.expiry_date && <Field label="Plati do" value={doc.expiry_date} />}
             <Field label="Suma" value={doc.amount_value != null ? `${doc.amount_value} ${doc.amount_currency || ""}` : "-"} />
             <Field label="Zhrnutie" value={doc.summary} />
             <Field label="Zdroj" value={doc.source} />
@@ -125,6 +127,7 @@ export default function DocumentDetail({ documentId, onBack }) {
             <LabeledInput label="Firma" value={form.correspondent || ""} onChange={(v) => setForm({ ...form, correspondent: v })} />
             <LabeledInput label="Typ" value={form.doc_type || ""} onChange={(v) => setForm({ ...form, doc_type: v })} />
             <LabeledInput label="Datum (YYYY-MM-DD)" value={form.doc_date || ""} onChange={(v) => setForm({ ...form, doc_date: v })} />
+            <LabeledInput label="Plati do (YYYY-MM-DD)" value={form.expiry_date || ""} onChange={(v) => setForm({ ...form, expiry_date: v })} />
             <LabeledInput label="Zhrnutie" value={form.summary || ""} onChange={(v) => setForm({ ...form, summary: v })} />
             <div style={{ display: "flex", gap: 8 }}>
               <Button onClick={save}>Ulozit</Button>

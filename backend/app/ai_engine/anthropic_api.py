@@ -14,10 +14,11 @@ EXTRACTION_SCHEMA = {
         "correspondent": {"type": "string"},
         "doc_type": {"type": "string"},
         "date": {"type": ["string", "null"]},
+        "expiry_date": {"type": ["string", "null"]},
         "amount": {"type": ["string", "null"]},
         "summary": {"type": "string"},
     },
-    "required": ["correspondent", "doc_type", "date", "amount", "summary"],
+    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary"],
     "additionalProperties": False,
 }
 
@@ -83,6 +84,7 @@ class AnthropicAPIProvider:
             correspondent=data_json.get("correspondent") or "neznama-firma",
             doc_type=data_json.get("doc_type") or "other",
             doc_date=data_json.get("date"),
+            expiry_date=data_json.get("expiry_date"),
             amount_raw=data_json.get("amount"),
             summary=data_json.get("summary") or "",
             raw_response=text,

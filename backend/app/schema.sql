@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS documents (
     correspondent       TEXT NOT NULL,
     doc_type            TEXT NOT NULL DEFAULT 'other',
     doc_date            TEXT,
+    expiry_date         TEXT,
     amount_value        REAL,
     amount_currency     TEXT,
     amount_raw          TEXT,
@@ -59,6 +60,11 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE INDEX IF NOT EXISTS idx_documents_correspondent ON documents(correspondent);
 CREATE INDEX IF NOT EXISTS idx_documents_doc_date ON documents(doc_date);
+-- idx_documents_expiry_date is created in db.py's _migrate(), not here --
+-- this script runs unconditionally on every connection (via executescript,
+-- before _migrate() has a chance to ALTER TABLE), so indexing a column
+-- that doesn't exist yet on an already-existing production table would
+-- crash startup before the migration ever runs.
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(file_hash);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(

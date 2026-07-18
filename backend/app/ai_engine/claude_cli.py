@@ -60,6 +60,13 @@ class ClaudeCLIProvider:
         except json.JSONDecodeError as exc:
             raise ExtractionError(f"nepodarilo sa naparsovat JSON od modelu: {exc}") from exc
 
+        usage = outer.get("usage") or {}
+        input_tokens = (
+            (usage.get("input_tokens") or 0)
+            + (usage.get("cache_creation_input_tokens") or 0)
+            + (usage.get("cache_read_input_tokens") or 0)
+        ) or None
+
         return ExtractionResult(
             correspondent=data.get("correspondent") or "neznama-firma",
             doc_type=data.get("doc_type") or "other",
@@ -67,4 +74,7 @@ class ClaudeCLIProvider:
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
             raw_response=result_text,
+            cost_usd=outer.get("total_cost_usd"),
+            input_tokens=input_tokens,
+            output_tokens=usage.get("output_tokens"),
         )

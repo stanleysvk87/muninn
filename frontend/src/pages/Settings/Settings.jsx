@@ -21,16 +21,19 @@ export default function Settings() {
   const [aiMode, setAiMode] = useState("auto");
   const [apiKey, setApiKey] = useState("");
   const [testResult, setTestResult] = useState(null);
+  const [usage, setUsage] = useState(null);
 
   useEffect(() => {
     Promise.all([
       api.get("/settings/watch-folders"),
       api.get("/settings/mail"),
       api.get("/settings/ai-provider"),
-    ]).then(([f, m, a]) => {
+      api.get("/settings/usage"),
+    ]).then(([f, m, a, u]) => {
       setFolders(f.data.folders);
       setMail(m.data);
       setAiMode(a.data.mode);
+      setUsage(u.data);
     });
   }, []);
 
@@ -143,6 +146,60 @@ export default function Settings() {
           </Button>
         </div>
         {testResult && <p style={{ marginTop: 8 }}>{testResult}</p>}
+      </Card>
+
+      <Card>
+        <h3 style={{ marginBottom: 12 }}>Spotreba AI</h3>
+        {!usage ? (
+          <p style={{ color: "var(--color-text-secondary)" }}>Nacitavam...</p>
+        ) : usage.total.documents === 0 ? (
+          <p style={{ color: "var(--color-text-secondary)" }}>Zatial ziadne spracovane dokumenty</p>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+              <div>
+                <div className="eyebrow">Spracovanych dokumentov</div>
+                <div style={{ fontSize: 20 }}>{usage.total.documents}</div>
+              </div>
+              <div>
+                <div className="eyebrow">Odhadovane naklady</div>
+                <div style={{ fontSize: 20 }}>${usage.total.cost_usd.toFixed(4)}</div>
+              </div>
+              <div>
+                <div className="eyebrow">Tokeny (in/out)</div>
+                <div style={{ fontSize: 20 }}>
+                  {usage.total.input_tokens.toLocaleString()} / {usage.total.output_tokens.toLocaleString()}
+                </div>
+              </div>
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--color-text-secondary)" }}>
+                  <th style={{ padding: "4px 8px" }}>Provider</th>
+                  <th style={{ padding: "4px 8px" }}>Dokumentov</th>
+                  <th style={{ padding: "4px 8px" }}>Naklady</th>
+                  <th style={{ padding: "4px 8px" }}>Tokeny in/out</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.by_provider.map((row) => (
+                  <tr key={row.ai_provider || "neznamy"}>
+                    <td style={{ padding: "4px 8px" }}>{row.ai_provider || "neznamy"}</td>
+                    <td style={{ padding: "4px 8px" }}>{row.documents}</td>
+                    <td style={{ padding: "4px 8px" }}>${row.cost_usd.toFixed(4)}</td>
+                    <td style={{ padding: "4px 8px" }}>
+                      {row.input_tokens.toLocaleString()} / {row.output_tokens.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p style={{ marginTop: 12, fontSize: 12, color: "var(--color-text-secondary)" }}>
+              Naklady pre claude/codex CLI su realne (z --output-format json), API fallback je odhad podla
+              standardneho cennika Sonnet 5. Presiel claude/codex cez predplatne, tak sa realne neuctuje extra.
+            </p>
+          </>
+        )}
       </Card>
     </div>
   );

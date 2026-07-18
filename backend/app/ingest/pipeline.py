@@ -101,13 +101,15 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         """INSERT INTO documents
              (original_filename, stored_path, correspondent, doc_type, doc_date, amount_value,
               amount_currency, amount_raw, summary, source, source_detail, ai_provider, ai_model,
-              ai_raw_response, mime_type, file_size, file_hash, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
+              ai_raw_response, mime_type, file_size, file_hash, cost_usd, input_tokens,
+              output_tokens, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
         (
             original_filename, stored_path, result["correspondent"], result["doc_type"],
             result["doc_date"], amount_value, amount_currency, result["amount_raw"],
             result["summary"], source, source_detail, provider.name, provider.model,
-            result["raw_response"], mime_type, file_size, file_hash, now, now,
+            result["raw_response"], mime_type, file_size, file_hash, result["cost_usd"],
+            result["input_tokens"], result["output_tokens"], now, now,
         ),
     )
     return {"document_id": cur.lastrowid, "duplicate": False}

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from ... import crypto
 from ...ai_engine import get_provider
 from ...ai_engine.base import ExtractionError
+from ...db import execute
 from ...ingest.watch_folder import sync_watch_folders
 from ...settings_store import get_setting, set_setting
 
@@ -77,3 +78,27 @@ def test_ai_provider():
     except ExtractionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"provider": provider.name, "model": provider.model}
+
+
+@router.get("/usage")
+def get_usage():
+    total = execute(
+        """SELECT COUNT(*) AS documents,
+                  COALESCE(SUM(cost_usd), 0) AS cost_usd,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens
+           FROM documents WHERE status = 'processed'"""
+    ).fetchone()
+    by_provider = execute(
+        """SELECT ai_provider,
+                  COUNT(*) AS documents,
+                  COALESCE(SUM(cost_usd), 0) AS cost_usd,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens
+           FROM documents WHERE status = 'processed'
+           GROUP BY ai_provider ORDER BY documents DESC"""
+    ).fetchall()
+    return {
+        "total": dict(total),
+        "by_provider": [dict(row) for row in by_provider],
+    }

@@ -68,4 +68,9 @@ class CodexCLIProvider:
             amount_raw=data.get("amount"),
             summary=data.get("summary") or "",
             raw_response=result_text,
+            # codex exec -o only writes the final text, not a cost/usage JSON
+            # wrapper like `claude -p --output-format json` -- unknown for now.
+            cost_usd=None,
+            input_tokens=None,
+            output_tokens=None,
         )

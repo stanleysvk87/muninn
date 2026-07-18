@@ -62,6 +62,12 @@ export default function DocumentDetail({ documentId, onBack }) {
     setEditing(false);
   }
 
+  async function remove() {
+    if (!window.confirm("Naozaj zmazat tento dokument?")) return;
+    await api.delete(`/documents/${documentId}`);
+    onBack();
+  }
+
   if (error) return <ErrorState>{error}</ErrorState>;
   if (!doc) return <LoadingBlock />;
 
@@ -108,6 +114,9 @@ export default function DocumentDetail({ documentId, onBack }) {
               )}
               <Button variant="secondary" onClick={() => setEditing(true)}>
                 Upravit
+              </Button>
+              <Button variant="ghost" onClick={remove}>
+                Zmazat
               </Button>
             </div>
           </>

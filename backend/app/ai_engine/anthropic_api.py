@@ -72,6 +72,13 @@ class AnthropicAPIProvider:
             raise ExtractionError("Prazdna odpoved od API")
 
         data_json = json.loads(text)
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        # Sonnet 5 standard rate ($3/$15 per MTok) -- an estimate, not the
+        # billed-exact figure (doesn't account for prompt-cache discounts or
+        # any temporary introductory pricing).
+        cost_usd = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+
         return ExtractionResult(
             correspondent=data_json.get("correspondent") or "neznama-firma",
             doc_type=data_json.get("doc_type") or "other",
@@ -79,4 +86,7 @@ class AnthropicAPIProvider:
             amount_raw=data_json.get("amount"),
             summary=data_json.get("summary") or "",
             raw_response=text,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

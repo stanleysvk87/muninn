@@ -9,6 +9,9 @@ class ExtractionResult(TypedDict):
     amount_raw: str | None
     summary: str
     raw_response: str
+    cost_usd: float | None
+    input_tokens: int | None
+    output_tokens: int | None
 
 
 class ExtractionError(Exception):

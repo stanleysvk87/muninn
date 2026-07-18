@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ... import crypto
+from ... import crypto, telegram
 from ...ai_engine import get_provider, get_provider_chain
 from ...ai_engine.base import ExtractionError
 from ...db import execute
@@ -80,6 +80,45 @@ def test_ai_provider():
     except ExtractionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"provider": provider.name, "model": provider.model}
+
+
+@router.get("/telegram")
+def get_telegram_settings():
+    config = dict(get_setting("telegram", {}))
+    config.pop("bot_token_encrypted", None)
+    config.setdefault("enabled", False)
+    config.setdefault("chat_id", "")
+    config.setdefault("notify_days_before", 30)
+    config["configured"] = bool(get_setting("telegram", {}).get("bot_token_encrypted"))
+    return config
+
+
+@router.put("/telegram")
+def update_telegram_settings(payload: dict):
+    config = dict(get_setting("telegram", {}))
+    if "enabled" in payload:
+        config["enabled"] = bool(payload["enabled"])
+    if "chat_id" in payload:
+        config["chat_id"] = telegram.sanitize_chat_id(payload["chat_id"])
+    if "notify_days_before" in payload:
+        config["notify_days_before"] = int(payload["notify_days_before"])
+    if payload.get("bot_token"):
+        config["bot_token_encrypted"] = crypto.encrypt(telegram.sanitize_bot_token(payload["bot_token"]))
+    set_setting("telegram", config)
+    safe = dict(config)
+    safe.pop("bot_token_encrypted", None)
+    safe["configured"] = bool(config.get("bot_token_encrypted"))
+    return safe
+
+
+@router.post("/telegram/test")
+def test_telegram():
+    config = get_setting("telegram", {})
+    bot_token = crypto.decrypt(config["bot_token_encrypted"]) if config.get("bot_token_encrypted") else ""
+    result = telegram.test_connection(bot_token, config.get("chat_id", ""))
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
 
 
 @router.get("/usage")

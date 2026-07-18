@@ -23,6 +23,9 @@ export default function Settings() {
   const [testResult, setTestResult] = useState(null);
   const [usage, setUsage] = useState(null);
   const [diagnostics, setDiagnostics] = useState(null);
+  const [telegram, setTelegram] = useState({});
+  const [telegramBotToken, setTelegramBotToken] = useState("");
+  const [telegramTestResult, setTelegramTestResult] = useState(null);
 
   useEffect(() => {
     Promise.all([
@@ -31,12 +34,14 @@ export default function Settings() {
       api.get("/settings/ai-provider"),
       api.get("/settings/usage"),
       api.get("/settings/diagnostics"),
-    ]).then(([f, m, a, u, d]) => {
+      api.get("/settings/telegram"),
+    ]).then(([f, m, a, u, d, t]) => {
       setFolders(f.data.folders);
       setMail(m.data);
       setAiMode(a.data.mode);
       setUsage(u.data);
       setDiagnostics(d.data);
+      setTelegram(t.data);
     });
   }, []);
 
@@ -86,6 +91,27 @@ export default function Settings() {
       setTestResult(`OK: ${res.data.provider} (${res.data.model})`);
     } catch (err) {
       setTestResult(`Chyba: ${err.response?.data?.detail}`);
+    }
+  }
+
+  async function saveTelegram() {
+    const res = await api.put("/settings/telegram", {
+      enabled: telegram.enabled,
+      chat_id: telegram.chat_id,
+      notify_days_before: telegram.notify_days_before,
+      bot_token: telegramBotToken || undefined,
+    });
+    setTelegram(res.data);
+    setTelegramBotToken("");
+  }
+
+  async function testTelegram() {
+    setTelegramTestResult(null);
+    try {
+      const res = await api.post("/settings/telegram/test");
+      setTelegramTestResult(`OK: ${res.data.message}`);
+    } catch (err) {
+      setTelegramTestResult(`Chyba: ${err.response?.data?.detail}`);
     }
   }
 
@@ -139,6 +165,55 @@ export default function Settings() {
         <Button onClick={saveMail} style={{ marginTop: 12 }}>
           Ulozit
         </Button>
+      </Card>
+
+      <Card>
+        <h3 style={{ marginBottom: 12 }}>Telegram upozornenia</h3>
+        <p style={{ color: "var(--color-text-secondary)", fontSize: 13, marginBottom: 12 }}>
+          Ked sa blizi platnost dokumentu (poistka, zmluva, doklad), poslem sprava na Telegram.
+        </p>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <input
+            type="checkbox"
+            checked={!!telegram.enabled}
+            onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
+          />
+          Zapnut Telegram upozornenia
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <input
+            placeholder="Bot token (od @BotFather)"
+            type="password"
+            value={telegramBotToken}
+            onChange={(e) => setTelegramBotToken(e.target.value)}
+            style={inputStyle}
+          />
+          <input
+            placeholder="Chat ID"
+            value={telegram.chat_id || ""}
+            onChange={(e) => setTelegram({ ...telegram, chat_id: e.target.value })}
+            style={inputStyle}
+          />
+          <input
+            placeholder="Kolko dni vopred upozornit"
+            type="number"
+            value={telegram.notify_days_before ?? 30}
+            onChange={(e) => setTelegram({ ...telegram, notify_days_before: Number(e.target.value) })}
+            style={inputStyle}
+          />
+        </div>
+        {telegram.configured && (
+          <p style={{ marginTop: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
+            Bot token je ulozeny (zasifrovany). Nechaj pole prazdne, ak ho nechces menit.
+          </p>
+        )}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <Button onClick={saveTelegram}>Ulozit</Button>
+          <Button variant="secondary" onClick={testTelegram}>
+            Otestovat
+          </Button>
+        </div>
+        {telegramTestResult && <p style={{ marginTop: 8 }}>{telegramTestResult}</p>}
       </Card>
 
       <Card>

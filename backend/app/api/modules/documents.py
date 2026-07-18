@@ -398,6 +398,11 @@ def update_document(document_id: int, payload: dict):
         "amount_value", "amount_currency", "summary", "review_status",
     }
     fields = {k: v for k, v in payload.items() if k in allowed}
+    if "expiry_date" in fields and fields["expiry_date"] != row["expiry_date"]:
+        # A corrected expiry date invalidates any earlier Telegram notification
+        # sent for the old one -- otherwise expiry_notifier.py would never
+        # ping again about a document it already (incorrectly) notified for.
+        fields["expiry_notified_at"] = None
     if fields:
         changes = {
             key: {"from": row[key], "to": value}

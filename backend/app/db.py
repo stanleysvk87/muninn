@@ -17,6 +17,7 @@ _DOCUMENTS_COLUMNS = {
     "expiry_dismissed_at": "TEXT",
     "review_status": "TEXT NOT NULL DEFAULT 'na_kontrolu'",
     "evidence_json": "TEXT",
+    "expiry_notified_at": "TEXT",
 }
 
 _DEFAULT_SAVED_VIEWS = {

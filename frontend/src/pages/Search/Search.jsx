@@ -23,6 +23,22 @@ const COLUMNS = [
     sortable: false,
     render: (r) => <span style={{ color: "var(--color-text-secondary)" }}>{(r.summary || "").slice(0, 80)}</span>,
   },
+  {
+    key: "actions",
+    label: "",
+    sortable: false,
+    render: (r) =>
+      r.status === "processed" ? (
+        <a
+          className="btn btn-ghost"
+          href={`/api/documents/${r.id}/file?download=true`}
+          onClick={(e) => e.stopPropagation()}
+          style={{ padding: "4px 10px", minHeight: "auto" }}
+        >
+          Stiahnut
+        </a>
+      ) : null,
+  },
 ];
 
 export default function Search({ onOpenDocument }) {

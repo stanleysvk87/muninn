@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..ai_engine import get_provider
+from ..ai_engine import get_provider_chain
 from ..ai_engine.base import ExtractionError
 from ..archive.store import place
 from ..db import execute
@@ -45,10 +45,28 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> i
         staged = Path(tmp) / original_filename
         shutil.copy2(file_path, staged)
 
-        try:
-            provider = get_provider()
-            result = provider.extract(staged)
-        except ExtractionError as exc:
+        # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
+        # fails at call time (e.g. usage limits hit, not just "not installed"),
+        # fall through to the next rather than failing the whole document.
+        chain = get_provider_chain()
+        result = None
+        provider = None
+        last_error: ExtractionError | None = None
+        for candidate in chain:
+            try:
+                result = candidate.extract(staged)
+                provider = candidate
+                break
+            except ExtractionError as exc:
+                last_error = exc
+                continue
+
+        if result is None:
+            error_message = (
+                str(last_error) if last_error is not None else
+                "Ziadny AI provider nie je k dispozicii - nainstaluj/prihlas sa do "
+                "claude alebo codex CLI, alebo nastav Anthropic API kluc v Nastaveniach"
+            )
             cur = execute(
                 """INSERT INTO documents
                      (original_filename, stored_path, correspondent, doc_type, source,
@@ -57,7 +75,7 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> i
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, ?, ?)""",
                 (
                     original_filename, str(file_path), "neznama-firma", "other", source,
-                    source_detail, mime_type, file_size, file_hash, str(exc), now, now,
+                    source_detail, mime_type, file_size, file_hash, error_message, now, now,
                 ),
             )
             return cur.lastrowid

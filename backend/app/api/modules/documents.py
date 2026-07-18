@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ...db import execute
 
@@ -96,6 +96,27 @@ def get_document(document_id: int):
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
     return _row_to_dict(row)
+
+
+@router.get("/{document_id}/file")
+def get_document_file(document_id: int, download: bool = False):
+    row = execute(
+        "SELECT stored_path, original_filename, mime_type FROM documents WHERE id = ?",
+        (document_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+
+    path = Path(row["stored_path"])
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Subor sa na disku nenasiel (mozno zlyhalo spracovanie)")
+
+    return FileResponse(
+        path,
+        media_type=row["mime_type"] or "application/octet-stream",
+        filename=row["original_filename"] if download else None,
+        content_disposition_type="attachment" if download else "inline",
+    )
 
 
 @router.patch("/{document_id}")

@@ -82,9 +82,34 @@ export default function DocumentDetail({ documentId, onBack }) {
             <Field label="Povodny nazov" value={doc.original_filename} />
             <Field label="Ulozene v" value={doc.stored_path} />
             {doc.error_message && <Field label="Chyba" value={doc.error_message} />}
-            <Button variant="secondary" onClick={() => setEditing(true)} style={{ marginTop: 8 }}>
-              Upravit
-            </Button>
+
+            {doc.status === "processed" && doc.mime_type?.startsWith("image/") && (
+              <div style={{ margin: "16px 0" }}>
+                <a href={`/api/documents/${doc.id}/file`} target="_blank" rel="noreferrer">
+                  <img
+                    src={`/api/documents/${doc.id}/file`}
+                    alt={doc.original_filename}
+                    style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, border: "1px solid var(--color-border)" }}
+                  />
+                </a>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              {doc.status === "processed" && (
+                <>
+                  <a className="btn btn-secondary" href={`/api/documents/${doc.id}/file`} target="_blank" rel="noreferrer">
+                    Zobrazit
+                  </a>
+                  <a className="btn btn-secondary" href={`/api/documents/${doc.id}/file?download=true`}>
+                    Stiahnut
+                  </a>
+                </>
+              )}
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                Upravit
+              </Button>
+            </div>
           </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

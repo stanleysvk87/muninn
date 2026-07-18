@@ -24,5 +24,15 @@ ENV MUNINN_DATA_DIR=/app/data \
     MUNINN_DB_PATH=/app/data/muninn.db \
     MUNINN_FRONTEND_DIST_DIR=/app/frontend/dist
 
+# Must NOT run as root: the claude CLI refuses --dangerously-skip-permissions
+# (which our claude_cli provider relies on for headless extraction) when
+# invoked as root/sudo, as a hard-coded safety guard. UID 1000 matches the
+# typical single-user homelab host account so bind-mounted volumes (data,
+# archive, ~/.claude) need no extra chown gymnastics.
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin muninn \
+    && mkdir -p /app/data /app/archive \
+    && chown -R muninn:muninn /app
+USER muninn
+
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

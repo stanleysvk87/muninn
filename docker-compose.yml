@@ -8,14 +8,16 @@ services:
       MUNINN_COOKIE_SECURE: ${MUNINN_COOKIE_SECURE:-true}
       MUNINN_AI_PROVIDER_MODE: ${MUNINN_AI_PROVIDER_MODE:-auto}
       MUNINN_ANTHROPIC_API_KEY: ${MUNINN_ANTHROPIC_API_KEY:-}
+      HOME: /home/muninn
     volumes:
       - ${MUNINN_DATA_HOST_PATH:-./data}:/app/data
       - ${MUNINN_ARCHIVE_HOST_PATH:-./archive}:/app/archive
-      # Optional: reuse the host's claude/codex CLI login instead of an API
-      # key (MUNINN_AI_PROVIDER_MODE=claude_cli/codex_cli/auto). Only works
-      # if this container runs on the same CPU architecture as the host —
-      # see INSTALL.md for the tradeoffs vs. the API-key path above.
-      # - ${HOME}/.claude:/root/.claude:ro
-      # - ${HOME}/.local/share/claude:/root/.local/share/claude:ro
-      # - ${HOME}/.local/bin/claude:/usr/local/bin/claude:ro
+      # Reuse the host's claude CLI login instead of an API key (only works
+      # because this container runs on the same aarch64 host — see
+      # INSTALL.md for the tradeoffs vs. the API-key path). The container
+      # runs as non-root (UID 1000) because claude refuses
+      # --dangerously-skip-permissions as root.
+      - ${HOME}/.claude:/home/muninn/.claude:ro
+      - ${MUNINN_CLAUDE_BIN_HOST_PATH}:/usr/local/bin/claude:ro
+      - /mnt/storage/data/claude-global:/mnt/storage/data/claude-global:ro
     restart: unless-stopped

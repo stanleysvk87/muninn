@@ -69,7 +69,8 @@ export default function Login({ onLoggedIn }) {
               />
               <span>
                 Suhlasim so spracovanim mojich dokumentov vratane odosielania obsahu AI poskytovatelom
-                (Claude/Codex/Anthropic) na extrakciu. Viac v{" "}
+                (Claude/Codex/Anthropic) na extrakciu a beriem na vedomie zrieknutie sa zodpovednosti
+                (softver "tak ako je", spracovanie tretou stranou mimo kontroly prevadzkovatela). Viac v{" "}
                 <a href="/ochrana-udajov.html" target="_blank" rel="noreferrer">
                   Ochrane udajov
                 </a>

@@ -1,0 +1,29 @@
+[Unit]
+Description=Muninn - document archive for invoices/contracts
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/muninn/backend
+EnvironmentFile=/etc/muninn/muninn.env
+ExecStart=/opt/muninn/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+# --- AI engine vs. hardening tradeoff (see INSTALL.md) ---
+# If MUNINN_AI_PROVIDER_MODE is claude_cli/codex_cli/auto (and a CLI is
+# actually detected), this service MUST run as the user whose home
+# directory holds that authenticated CLI session (~/.claude or ~/.codex) -
+# do not set User= to a separate hardened account in that case, it will
+# not have access to the CLI login.
+#
+# If MUNINN_AI_PROVIDER_MODE=anthropic_api (API key, no CLI dependency),
+# uncomment the block below for a fully isolated, hardened service account:
+# User=muninn
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ReadWritePaths=/opt/muninn/backend/data /opt/muninn/backend/archive
+
+[Install]
+WantedBy=multi-user.target

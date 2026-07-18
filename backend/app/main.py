@@ -1,8 +1,11 @@
 import asyncio
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .api.routes import router as api_router
 from .auth.middleware import AuthMiddleware
@@ -23,6 +26,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/assets/"):
+            # Vite content-hashes these filenames — safe to cache forever.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif not path.startswith("/api"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if settings.cors_origin_list:
     app.add_middleware(
         CORSMiddleware,
@@ -33,15 +48,30 @@ if settings.cors_origin_list:
     )
 
 # Middleware order matters: Starlette applies these in reverse of add order,
-# so security headers (outermost) are added last, auth (innermost, closest to
-# the route) is added first.
+# so security/cache headers (outermost) are added last, auth (innermost,
+# closest to the route) is added first.
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CacheControlMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(api_router)
 
-# Frontend static-file serving (SPA fallback, GZip, cache headers) is added
-# in Phase 5 once frontend/dist exists — see docs ARCHITECTURE.md.
+# Single-process deployment: FastAPI serves the built frontend directly
+# (StaticFiles + SPA fallback) — no nginx/Caddy needed, see
+# docs/adr/0002-single-process-no-reverse-proxy.md. No-op if frontend/dist
+# hasn't been built yet (e.g. during backend-only dev).
+if settings.frontend_dist_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=settings.frontend_dist_dir / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        candidate = settings.frontend_dist_dir / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(settings.frontend_dist_dir / "index.html")
 
 
 @app.on_event("startup")

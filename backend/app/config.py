@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     port: int = 8000
     cors_origins: str = ""
+    frontend_dist_dir: Path = Path("../frontend/dist")
 
     encryption_key: str = ""
     session_ttl_days: int = 7

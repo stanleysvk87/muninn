@@ -1,0 +1,89 @@
+/* MidgardNet design tokens, ported verbatim from ~/midgard/src/app/globals.css */
+:root {
+  --color-ink: #0a0e17;
+  --color-ink-secondary: #0b1626;
+  --color-panel: #111b2e;
+  --color-border: rgba(148, 163, 184, 0.16);
+  --color-border-strong: rgba(148, 163, 184, 0.32);
+
+  --color-blue: #2456d6;
+  --color-blue-light: #7da1f2;
+  --color-fjord: #14224a;
+  --color-gold: #d9a441;
+  --color-gold-soft: #eac57d;
+
+  --color-text-primary: #f3f6ff;
+  --color-text-secondary: #93a0be;
+  --color-text-tertiary: #5d6b8c;
+
+  --color-success: #23966b;
+  --color-warning: #c9642a;
+
+  --background: var(--color-ink);
+  --foreground: var(--color-text-primary);
+
+  --font-display: "MuninnPlex", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "MuninnInter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "MuninnJBMono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@font-face {
+  font-family: "MuninnPlex";
+  src: url("../fonts/plex_500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnPlex";
+  src: url("../fonts/plex_600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnPlex";
+  src: url("../fonts/plex_700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnInter";
+  src: url("../fonts/inter_400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnInter";
+  src: url("../fonts/inter_500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnInter";
+  src: url("../fonts/inter_600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnInter";
+  src: url("../fonts/inter_700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnJBMono";
+  src: url("../fonts/jbm_400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnJBMono";
+  src: url("../fonts/jbm_500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MuninnJBMono";
+  src: url("../fonts/jbm_700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}

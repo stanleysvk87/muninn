@@ -5,26 +5,34 @@ MAX_INLINE_TEXT_CHARS = 18_000
 TEXT_SUFFIXES = {".txt", ".md", ".csv", ".tsv", ".json", ".xml", ".html", ".htm"}
 
 
-EXTRACTION_PROMPT_TEMPLATE = """Precitaj dokument na ceste {file_path}. Moze to byt faktura, zmluva,
-rodny list, poistka, doklad totoznosti, alebo akykolvek iny dolezity osobny/rodinny dokument,
-ktory by clovek chcel neskor rychlo najst. Moze byt PDF, obrazok alebo text.
-Ak je obsah dokumentu vlozeny priamo v prompte nizsie, pouzi primarne tento vlozeny obsah.
-Ak je prilozeny obrazok, citaj prilozeny obrazok.
-Vrat VYLUCNE jeden JSON objekt (ziadny iny text, ziadne markdown fence) s polami:
-correspondent (hlavny identifikator, podla ktoreho by clovek dokument hladal - nazov firmy/
-protistrany pri fakture/zmluve/poistke, meno osoby pri rodnom liste/doklade totoznosti; kratky,
-bez diakritiky, vhodny do nazvu priecinka),
-doc_type (kratky slovensky nazov typu dokumentu, napr. "faktura", "zmluva", "rodny list",
-"poistka", "doklad", "ine" - podla toho, co dokument skutocne je),
-date (datum dokumentu vo formate YYYY-MM-DD, alebo null ak sa neda zistit),
-amount (suma s menou ako text, napr. "123.45 EUR", alebo null ak sa dokumentu netyka ziadna suma),
-expiry_date (datum platnosti/expiracie/obnovy vo formate YYYY-MM-DD - napr. kedy konci poistka,
-kedy vyprsa zmluva alebo doklad totoznosti/vodicsky preukaz - alebo null ak sa dokumentu netyka
-ziadny takyto datum),
-summary (1-2 vety po slovensky, o com dokument je),
-full_text ({full_text_instruction}),
-evidence (pole 0-5 objektov s poliami field, value, snippet, confidence; snippet je kratky citat/parafraza
-casti dokumentu, confidence je cislo 0-1; ak si nie si isty alebo evidence nevies uviest, vrat prazdne pole)."""
+EXTRACTION_PROMPT_TEMPLATE = """Read the document at path {file_path}. It can be an invoice,
+contract, birth certificate, insurance policy, identity document, payslip, bank document,
+medical document, school document, warranty, subscription notice, or any other important
+personal/family document that should be easy to find later. It can be a PDF, image, Office
+document or text.
+
+If the document content is embedded directly in the prompt below, use that embedded content
+as the primary source. If an image is attached, read the attached image.
+
+Return EXACTLY one JSON object (no other text, no markdown fence) with these fields:
+correspondent: main identifier a person would search for. Use a company/counterparty name
+for invoices/contracts/insurance, or a person's name for birth certificates/identity
+documents. Keep it short, ASCII without diacritics, suitable for a folder name.
+doc_type: one stable lowercase key from this list only:
+invoice, contract, birth_certificate, insurance_policy, identity_document, driver_license,
+bank_statement, payslip, tax_document, medical_document, school_document, warranty,
+subscription, receipt, correspondence, other.
+date: document date in YYYY-MM-DD, or null if it cannot be determined.
+amount: amount with currency as text, e.g. "123.45 EUR", or null if no amount applies.
+expiry_date: validity/expiration/renewal date in YYYY-MM-DD, e.g. when insurance, a
+contract, ID card, driver license, warranty or subscription expires; otherwise null.
+summary_sk: 1-2 natural Slovak sentences describing what the document is about.
+summary_en: 1-2 natural English sentences describing what the document is about.
+summary: same value as summary_sk, kept for backward compatibility.
+full_text: {full_text_instruction}.
+evidence: array of 0-5 objects with field, value, snippet, confidence. Snippet may quote
+or paraphrase the source document briefly. Confidence is a number from 0 to 1. If unsure
+or evidence is not available, return an empty array."""
 
 FULL_TEXT_INSTRUCTION_INLINE = (
     "obsah dokumentu je uz vlozeny vyssie v tomto prompte, takze ho tu NEOPAKUJ - vrat null"

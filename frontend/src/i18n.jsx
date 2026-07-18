@@ -79,7 +79,7 @@ const DICTIONARIES = {
     "savedView.failed.label": "Zlyhania",
     "savedView.failed.description": "Súbory, ktoré neprešli spracovaním.",
     "savedView.pending.label": "Vo fronte",
-    "savedView.pending.description": "AI momentálne nedostupné - spracujú sa automaticky, keď provider nabehne.",
+    "savedView.pending.description": "AI je momentálne nedostupná; dokumenty sa spracujú automaticky, keď provider nabehne.",
     "savedView.duplicates.label": "Možné duplikáty",
     "savedView.duplicates.description": "Dokumenty s otvoreným upozornením na duplicitu.",
 
@@ -131,6 +131,23 @@ const DICTIONARIES = {
     "table.amount": "Suma",
     "table.status": "Stav",
     "table.summary": "Zhrnutie",
+
+    "docType.invoice": "Faktúra",
+    "docType.contract": "Zmluva",
+    "docType.birth_certificate": "Rodný list",
+    "docType.insurance_policy": "Poistka",
+    "docType.identity_document": "Doklad totožnosti",
+    "docType.driver_license": "Vodičský preukaz",
+    "docType.bank_statement": "Bankový výpis",
+    "docType.payslip": "Výplatná páska",
+    "docType.tax_document": "Daňový dokument",
+    "docType.medical_document": "Zdravotný dokument",
+    "docType.school_document": "Školský dokument",
+    "docType.warranty": "Záruka",
+    "docType.subscription": "Predplatné",
+    "docType.receipt": "Pokladničný doklad",
+    "docType.correspondence": "Korešpondencia",
+    "docType.other": "Iné",
 
     "login.title": "Prihlásenie",
     "login.bootstrapTitle": "Vytvorenie admin účtu",
@@ -319,7 +336,7 @@ const DICTIONARIES = {
     "savedView.failed.label": "Failures",
     "savedView.failed.description": "Files that did not process successfully.",
     "savedView.pending.label": "Queued",
-    "savedView.pending.description": "AI is currently unavailable - these will process automatically once a provider is back.",
+    "savedView.pending.description": "AI is currently unavailable; documents will process automatically when a provider comes back.",
     "savedView.duplicates.label": "Possible duplicates",
     "savedView.duplicates.description": "Documents with an open duplicate warning.",
 
@@ -371,6 +388,23 @@ const DICTIONARIES = {
     "table.amount": "Amount",
     "table.status": "Status",
     "table.summary": "Summary",
+
+    "docType.invoice": "Invoice",
+    "docType.contract": "Contract",
+    "docType.birth_certificate": "Birth certificate",
+    "docType.insurance_policy": "Insurance policy",
+    "docType.identity_document": "Identity document",
+    "docType.driver_license": "Driver license",
+    "docType.bank_statement": "Bank statement",
+    "docType.payslip": "Payslip",
+    "docType.tax_document": "Tax document",
+    "docType.medical_document": "Medical document",
+    "docType.school_document": "School document",
+    "docType.warranty": "Warranty",
+    "docType.subscription": "Subscription",
+    "docType.receipt": "Receipt",
+    "docType.correspondence": "Correspondence",
+    "docType.other": "Other",
 
     "login.title": "Sign in",
     "login.bootstrapTitle": "Create admin account",
@@ -523,6 +557,37 @@ function parseMetadata(event) {
   }
 }
 
+const LEGACY_DOC_TYPE_KEYS = {
+  faktura: "invoice",
+  faktúra: "invoice",
+  zmluva: "contract",
+  "rodny list": "birth_certificate",
+  "rodný list": "birth_certificate",
+  poistka: "insurance_policy",
+  doklad: "identity_document",
+  "doklad totoznosti": "identity_document",
+  "doklad totožnosti": "identity_document",
+  "vodicsky preukaz": "driver_license",
+  "vodičský preukaz": "driver_license",
+  vypis: "bank_statement",
+  "bankovy vypis": "bank_statement",
+  "bankový výpis": "bank_statement",
+  "vyplatna paska": "payslip",
+  "výplatná páska": "payslip",
+  zaruka: "warranty",
+  záruka: "warranty",
+  predplatne: "subscription",
+  predplatné: "subscription",
+  uctenka: "receipt",
+  účtenka: "receipt",
+  ine: "other",
+  iné: "other",
+};
+
+function normalizeDocType(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 const I18nContext = createContext(null);
 
 export function I18nProvider({ children }) {
@@ -550,6 +615,17 @@ export function I18nProvider({ children }) {
       savedViewDescription: (key, fallback) => t(`savedView.${key}.description`) || fallback || "",
       reviewLabel: (value) => t(`review.${value}`) || value || "-",
       recurrenceLabel: (value) => (value ? t(`recurrence.${value}`) : t("common.none")),
+      docTypeLabel: (value) => {
+        const normalized = normalizeDocType(value);
+        const key = LEGACY_DOC_TYPE_KEYS[normalized] || normalized;
+        return t(`docType.${key}`) || value || "-";
+      },
+      localizedSummary: (row) => {
+        if (!row) return "";
+        return language === "en"
+          ? row.summary_en || row.summary || row.summary_sk || ""
+          : row.summary_sk || row.summary || row.summary_en || "";
+      },
       duplicateReason: (reason) =>
         (reason || "")
           .split(", ")

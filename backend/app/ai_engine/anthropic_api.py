@@ -14,11 +14,21 @@ EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
         "correspondent": {"type": "string"},
-        "doc_type": {"type": "string"},
+        "doc_type": {
+            "type": "string",
+            "enum": [
+                "invoice", "contract", "birth_certificate", "insurance_policy",
+                "identity_document", "driver_license", "bank_statement", "payslip",
+                "tax_document", "medical_document", "school_document", "warranty",
+                "subscription", "receipt", "correspondence", "other",
+            ],
+        },
         "date": {"type": ["string", "null"]},
         "expiry_date": {"type": ["string", "null"]},
         "amount": {"type": ["string", "null"]},
         "summary": {"type": "string"},
+        "summary_sk": {"type": "string"},
+        "summary_en": {"type": "string"},
         "full_text": {"type": ["string", "null"]},
         "evidence": {
             "type": "array",
@@ -35,7 +45,10 @@ EXTRACTION_SCHEMA = {
             },
         },
     },
-    "required": ["correspondent", "doc_type", "date", "expiry_date", "amount", "summary", "full_text", "evidence"],
+    "required": [
+        "correspondent", "doc_type", "date", "expiry_date", "amount",
+        "summary", "summary_sk", "summary_en", "full_text", "evidence",
+    ],
     "additionalProperties": False,
 }
 
@@ -115,7 +128,9 @@ class AnthropicAPIProvider:
             doc_date=data_json.get("date"),
             expiry_date=data_json.get("expiry_date"),
             amount_raw=data_json.get("amount"),
-            summary=data_json.get("summary") or "",
+            summary=data_json.get("summary") or data_json.get("summary_sk") or "",
+            summary_sk=data_json.get("summary_sk") or data_json.get("summary"),
+            summary_en=data_json.get("summary_en"),
             full_text=data_json.get("full_text") or None,
             evidence=data_json.get("evidence") if isinstance(data_json.get("evidence"), list) else None,
             raw_response=text,

@@ -13,7 +13,7 @@ function daysUntil(dateStr) {
 }
 
 export default function Dashboard({ onOpenDocument, onNavigate }) {
-  const { dayUnit, savedViewDescription, savedViewLabel, t } = useI18n();
+  const { dayUnit, docTypeLabel, savedViewDescription, savedViewLabel, t } = useI18n();
   const [recent, setRecent] = useState(null);
   const [facets, setFacets] = useState(null);
   const [expiring, setExpiring] = useState(null);
@@ -100,7 +100,7 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
                   <div>
                     <div style={{ fontWeight: 600 }}>{doc.correspondent}</div>
                     <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-                      {t("dashboard.validUntil", { type: doc.doc_type, date: doc.expiry_date })}
+                      {t("dashboard.validUntil", { type: docTypeLabel(doc.doc_type), date: doc.expiry_date })}
                     </div>
                   </div>
                   <div className="expiring-actions">
@@ -166,7 +166,7 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
               <div>
                 <div style={{ fontWeight: 600 }}>{doc.correspondent}</div>
                 <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-                  {doc.doc_type} {doc.doc_date ? `· ${doc.doc_date}` : ""}
+                  {docTypeLabel(doc.doc_type)} {doc.doc_date ? `· ${doc.doc_date}` : ""}
                 </div>
               </div>
               <StatusBadge status={doc.status} />

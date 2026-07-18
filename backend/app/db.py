@@ -21,6 +21,8 @@ _DOCUMENTS_COLUMNS = {
     "notify_recurrence": "TEXT",
     "next_recurrence_at": "TEXT",
     "full_text": "TEXT",
+    "summary_sk": "TEXT",
+    "summary_en": "TEXT",
 }
 
 _FTS_REBUILD_SQL = """
@@ -33,6 +35,8 @@ _FTS_REBUILD_SQL = """
         correspondent,
         doc_type,
         summary,
+        summary_sk,
+        summary_en,
         original_filename,
         full_text,
         content='documents',
@@ -40,18 +44,18 @@ _FTS_REBUILD_SQL = """
     );
 
     CREATE TRIGGER documents_ai AFTER INSERT ON documents BEGIN
-        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename, full_text)
-        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename, new.full_text);
+        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, summary_sk, summary_en, original_filename, full_text)
+        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.summary_sk, new.summary_en, new.original_filename, new.full_text);
     END;
     CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN
-        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename, full_text)
-        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename, old.full_text);
+        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, summary_sk, summary_en, original_filename, full_text)
+        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.summary_sk, old.summary_en, old.original_filename, old.full_text);
     END;
     CREATE TRIGGER documents_au AFTER UPDATE ON documents BEGIN
-        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, original_filename, full_text)
-        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.original_filename, old.full_text);
-        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, original_filename, full_text)
-        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.original_filename, new.full_text);
+        INSERT INTO documents_fts(documents_fts, rowid, correspondent, doc_type, summary, summary_sk, summary_en, original_filename, full_text)
+        VALUES ('delete', old.id, old.correspondent, old.doc_type, old.summary, old.summary_sk, old.summary_en, old.original_filename, old.full_text);
+        INSERT INTO documents_fts(rowid, correspondent, doc_type, summary, summary_sk, summary_en, original_filename, full_text)
+        VALUES (new.id, new.correspondent, new.doc_type, new.summary, new.summary_sk, new.summary_en, new.original_filename, new.full_text);
     END;
 
     INSERT INTO documents_fts(documents_fts) VALUES('rebuild');
@@ -116,8 +120,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # documents_fts doesn't exist yet (fresh DB) or predates full_text (an
     # existing production index), drop and recreate it against the now-
     # guaranteed-to-exist full_text column, then rebuild its contents.
+    conn.execute("UPDATE documents SET summary_sk = summary WHERE summary_sk IS NULL AND summary IS NOT NULL")
+
     fts_columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents_fts)")}
-    if "full_text" not in fts_columns:
+    if not {"full_text", "summary_sk", "summary_en"}.issubset(fts_columns):
         conn.executescript(_FTS_REBUILD_SQL)
     now = "datetime('now')"
     for key, view in _DEFAULT_SAVED_VIEWS.items():

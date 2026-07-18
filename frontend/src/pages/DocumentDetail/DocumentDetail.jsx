@@ -44,7 +44,7 @@ function LabeledInput({ label, value, onChange }) {
 }
 
 export default function DocumentDetail({ documentId, onBack }) {
-  const { duplicateReason, eventMessage, recurrenceLabel, reviewLabel, t } = useI18n();
+  const { docTypeLabel, duplicateReason, eventMessage, localizedSummary, recurrenceLabel, reviewLabel, t } = useI18n();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -138,7 +138,7 @@ export default function DocumentDetail({ documentId, onBack }) {
         {!editing ? (
           <>
             <Field label={t("detail.reviewStatus")} value={reviewLabel(doc.review_status)} />
-            <Field label={t("detail.type")} value={doc.doc_type} />
+            <Field label={t("detail.type")} value={docTypeLabel(doc.doc_type)} />
             <Field label={t("detail.date")} value={doc.doc_date} />
             {doc.expiry_date && <Field label={t("detail.validUntil")} value={doc.expiry_date} />}
             {doc.expiry_dismissed_at && <Field label={t("detail.alert")} value={t("detail.doneAt", { date: doc.expiry_dismissed_at })} />}
@@ -149,7 +149,7 @@ export default function DocumentDetail({ documentId, onBack }) {
               />
             )}
             <Field label={t("detail.amount")} value={doc.amount_value != null ? `${doc.amount_value} ${doc.amount_currency || ""}` : "-"} />
-            <Field label={t("detail.summary")} value={doc.summary} />
+            <Field label={t("detail.summary")} value={localizedSummary(doc)} />
             <Field label={t("detail.source")} value={doc.source} />
             <Field label={t("detail.originalName")} value={doc.original_filename} />
             <Field label={t("detail.storedIn")} value={doc.stored_path} />

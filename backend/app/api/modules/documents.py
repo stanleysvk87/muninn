@@ -16,7 +16,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 EXPORT_FIELDS = [
     "id", "correspondent", "doc_type", "doc_date", "amount_value",
-    "amount_currency", "summary", "original_filename", "stored_path",
+    "amount_currency", "summary", "summary_sk", "summary_en", "original_filename", "stored_path",
 ]
 
 DOWNLOAD_ONLY_MIME_TYPES = {
@@ -120,7 +120,7 @@ def _list_documents_query(
     if q:
         join = "JOIN documents_fts ON documents_fts.rowid = documents.id"
         # column index -1 lets FTS5 pick whichever column actually matched
-        # (correspondent/doc_type/summary/original_filename/full_text)
+        # (correspondent/doc_type/summary/summary_sk/summary_en/original_filename/full_text)
         # instead of guessing one in advance.
         select_extra = ", snippet(documents_fts, -1, '<<', '>>', ' ... ', 20) AS match_snippet"
         clauses.append("documents_fts MATCH ?")
@@ -418,9 +418,12 @@ def update_document(document_id: int, payload: dict):
 
     allowed = {
         "correspondent", "doc_type", "doc_date", "expiry_date", "expiry_dismissed_at",
-        "amount_value", "amount_currency", "summary", "review_status", "notify_recurrence",
+        "amount_value", "amount_currency", "summary", "summary_sk", "summary_en",
+        "review_status", "notify_recurrence",
     }
     fields = {k: v for k, v in payload.items() if k in allowed}
+    if "summary" in fields and "summary_sk" not in fields:
+        fields["summary_sk"] = fields["summary"]
     if "expiry_date" in fields and fields["expiry_date"] != row["expiry_date"]:
         # A corrected expiry date invalidates any earlier Telegram notification
         # sent for the old one -- otherwise expiry_notifier.py would never

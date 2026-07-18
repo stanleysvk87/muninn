@@ -19,7 +19,7 @@ function Highlighted({ text }) {
 }
 
 export default function Search({ expiringOnly = false, savedView = null, onOpenDocument, onNavigate }) {
-  const { savedViewLabel, t } = useI18n();
+  const { docTypeLabel, localizedSummary, savedViewLabel, t } = useI18n();
   const [q, setQ] = useState("");
   const [correspondent, setCorrespondent] = useState(null);
   const [docType, setDocType] = useState(null);
@@ -31,7 +31,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
 
   const columns = useMemo(() => [
     { key: "correspondent", label: t("table.correspondent") },
-    { key: "doc_type", label: t("table.type") },
+    { key: "doc_type", label: t("table.type"), render: (r) => docTypeLabel(r.doc_type) },
     { key: "doc_date", label: t("table.date") },
     { key: "expiry_date", label: t("table.validUntil"), hideOnMobile: true, render: (r) => r.expiry_date || "-" },
     {
@@ -48,7 +48,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
       hideOnMobile: true,
       render: (r) => (
         <span style={{ color: "var(--color-text-secondary)" }}>
-          {r.match_snippet ? <Highlighted text={r.match_snippet} /> : (r.summary || "").slice(0, 80)}
+          {r.match_snippet ? <Highlighted text={r.match_snippet} /> : localizedSummary(r).slice(0, 80)}
         </span>
       ),
     },
@@ -177,7 +177,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
                 color: docType === f.doc_type ? "var(--color-blue-light)" : undefined,
               }}
             >
-              {f.doc_type} ({f.count})
+              {docTypeLabel(f.doc_type)} ({f.count})
             </button>
           ))}
           {facets.correspondents.slice(0, 12).map((f) => (
@@ -233,8 +233,8 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
               />
               <div className="mobile-doc-main">
                 <strong>{row.correspondent}</strong>
-                <span>{row.doc_type || "-"}{row.expiry_date ? ` · ${t("search.validUntil", { date: row.expiry_date })}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
-                {row.match_snippet ? <p><Highlighted text={row.match_snippet} /></p> : row.summary && <p>{row.summary.slice(0, 120)}</p>}
+                <span>{docTypeLabel(row.doc_type)}{row.expiry_date ? ` · ${t("search.validUntil", { date: row.expiry_date })}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
+                {row.match_snippet ? <p><Highlighted text={row.match_snippet} /></p> : localizedSummary(row) && <p>{localizedSummary(row).slice(0, 120)}</p>}
               </div>
               <div className="mobile-doc-actions" onClick={(e) => e.stopPropagation()}>
                 <StatusBadge status={row.status} />

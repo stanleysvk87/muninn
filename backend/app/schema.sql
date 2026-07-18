@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS documents (
     amount_currency     TEXT,
     amount_raw          TEXT,
     summary             TEXT,
+    summary_sk          TEXT,
+    summary_en          TEXT,
     source              TEXT NOT NULL,
     source_detail       TEXT,
     ai_provider         TEXT,
@@ -124,7 +126,7 @@ CREATE TABLE IF NOT EXISTS saved_views (
     updated_at      TEXT NOT NULL
 );
 
--- documents_fts (with full_text) and its triggers are created in db.py's
+-- documents_fts (with full_text/summary_sk/summary_en) and its triggers are created in db.py's
 -- _migrate() -- FTS5 virtual tables can't get a column added via ALTER
 -- TABLE, so an already-existing production index needs a drop+rebuild
 -- rather than a CREATE ... IF NOT EXISTS here, which would just silently

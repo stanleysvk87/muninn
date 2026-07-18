@@ -318,7 +318,7 @@ def _normalize_for_detection(text: str | None) -> str:
 def _validate_result(result: dict) -> None:
     combined = "\n".join(
         str(result.get(key) or "")
-        for key in ("correspondent", "doc_type", "summary", "raw_response")
+        for key in ("correspondent", "doc_type", "summary", "summary_sk", "summary_en", "raw_response")
     )
     normalized = _normalize_for_detection(combined)
     if any(phrase in normalized for phrase in BAD_RESULT_PHRASES):
@@ -546,16 +546,17 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
     cur = execute(
         """INSERT INTO documents
              (original_filename, stored_path, correspondent, doc_type, doc_date, expiry_date,
-              amount_value, amount_currency, amount_raw, summary, source, source_detail,
+              amount_value, amount_currency, amount_raw, summary, summary_sk, summary_en, source, source_detail,
               ai_provider, ai_model, ai_raw_response, mime_type, file_size, file_hash, cost_usd,
               input_tokens, output_tokens, evidence_json, full_text, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?)""",
         (
             original_filename, stored_path, result["correspondent"], result["doc_type"],
             result["doc_date"], result["expiry_date"], amount_value, amount_currency,
-            result["amount_raw"], result["summary"], source, source_detail, chain_result.provider.name,
-            chain_result.provider.model, result["raw_response"], mime_type, file_size, file_hash,
-            result["cost_usd"], result["input_tokens"], result["output_tokens"],
+            result["amount_raw"], result["summary"], result.get("summary_sk"), result.get("summary_en"),
+            source, source_detail, chain_result.provider.name, chain_result.provider.model,
+            result["raw_response"], mime_type, file_size, file_hash, result["cost_usd"],
+            result["input_tokens"], result["output_tokens"],
             json.dumps(result.get("evidence") or [], ensure_ascii=False), full_text, now, now,
         ),
     )
@@ -639,7 +640,7 @@ def reprocess_document(document_id: int) -> dict:
     execute(
         """UPDATE documents SET
              stored_path = ?, correspondent = ?, doc_type = ?, doc_date = ?, expiry_date = ?,
-             amount_value = ?, amount_currency = ?, amount_raw = ?, summary = ?,
+             amount_value = ?, amount_currency = ?, amount_raw = ?, summary = ?, summary_sk = ?, summary_en = ?,
              ai_provider = ?, ai_model = ?, ai_raw_response = ?, cost_usd = ?, input_tokens = ?,
              output_tokens = ?, evidence_json = ?, full_text = ?, status = 'processed',
              error_message = NULL, updated_at = ?
@@ -647,7 +648,8 @@ def reprocess_document(document_id: int) -> dict:
         (
             str(dest), result["correspondent"], result["doc_type"], result["doc_date"],
             result["expiry_date"], amount_value, amount_currency, result["amount_raw"],
-            result["summary"], chain_result.provider.name, chain_result.provider.model,
+            result["summary"], result.get("summary_sk"), result.get("summary_en"),
+            chain_result.provider.name, chain_result.provider.model,
             result["raw_response"], result["cost_usd"], result["input_tokens"],
             result["output_tokens"], json.dumps(result.get("evidence") or [], ensure_ascii=False),
             chain_result.full_text, now, document_id,

@@ -1,27 +1,27 @@
-# ADR 0002: Jeden proces, žiadny nginx/Caddy
+# ADR 0002: Single process, no nginx/Caddy
 
-## Kontext
+## Context
 
-Heimdall beží ako 3 kontajnery (backend, frontend+nginx, voliteľný Caddy
-pre TLS). Požiadavka na Muninn je ale byť spustiteľný rovnako jednoducho
-ako Docker kontajner alebo ako systemd služba na hocijakom Linuxe — čím
-viac pohyblivých častí (reverse proxy, viac kontajnerov), tým zložitejšie
-je to zreplikovať mimo Dockeru.
+Heimdall runs as 3 containers (backend, frontend+nginx, optional Caddy
+for TLS). Muninn's requirement, though, is to be deployable equally
+easily as a Docker container or a systemd service on any Linux host — the
+more moving parts (a reverse proxy, multiple containers), the harder that
+is to replicate outside Docker.
 
-## Rozhodnutie
+## Decision
 
-FastAPI backend servíruje priamo aj postavený React frontend (`StaticFiles`
-+ catch-all route pre SPA fallback + GZip middleware + cache headery pre
-hashované assety). Jeden proces, jeden port.
+The FastAPI backend directly serves the built React frontend too
+(`StaticFiles` + a catch-all route for SPA fallback + GZip middleware +
+cache headers for hashed assets). One process, one port.
 
-## Dôsledky
+## Consequences
 
-- Docker nasadenie: 1 kontajner namiesto 3.
-- systemd nasadenie: 1 unit súbor, `uvicorn main:app`, žiadny nginx config
-  navyše.
-- Kto chce TLS terminovanie, môže si pred appku dať vlastný reverse proxy
-  (rovnako ako Heimdallov voliteľný Caddy profil) — to je mimo appky
-  samotnej, nie jej súčasť.
-- Nutné dávať pozor na `--workers 1` (nie viac) — watch-folder observer aj
-  mail poller bežia v tom istom procese ako web server; viac workerov by
-  znamenalo duplicitné spracovanie tých istých udalostí.
+- Docker deployment: 1 container instead of 3.
+- systemd deployment: 1 unit file, `uvicorn main:app`, no extra nginx
+  config.
+- Anyone who wants TLS termination can put their own reverse proxy in
+  front of the app (the same way Heimdall's optional Caddy profile
+  works) — that's outside the app itself, not part of it.
+- `--workers 1` (not more) is required — the watch-folder observer and
+  the mail poller run in the same process as the web server; more
+  workers would mean the same events get processed multiple times.

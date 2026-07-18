@@ -1,28 +1,28 @@
-# ADR 0001: SQLite + FTS5 namiesto flat JSON store
+# ADR 0001: SQLite + FTS5 instead of a flat JSON store
 
-## Kontext
+## Context
 
-Heimdall (`/opt/heimdall`), najbližší existujúci vzor v tomto homelabe,
-nepoužíva databázu — persistuje do `app/data/*.json` cez atomický write
-helper (`core/json_store.py`). Funguje to dobre pre dashboardy a
-konfiguráciu, kde sa číta/zapisuje podľa známeho kľúča.
+Heimdall (`/opt/heimdall`), the closest existing pattern in this homelab,
+uses no database — it persists to `app/data/*.json` via an atomic-write
+helper (`core/json_store.py`). That works well for dashboards and
+configuration, where you read/write by a known key.
 
-Muninn potrebuje niečo iné: fulltextové vyhľadávanie naprieč rastúcim
-archívom dokumentov ("nájdi všetko od Uniqa"), čo flat JSON súbory
-neponúkajú bez toho, aby sme si vyhľadávanie napísali od nuly.
+Muninn needs something different: full-text search across a growing
+archive of documents ("find everything from Uniqa"), which flat JSON
+files can't offer without writing a search engine from scratch.
 
-## Rozhodnutie
+## Decision
 
-Použiť SQLite s FTS5 virtuálnou tabuľkou (`documents_fts`), napojenou
-triggermi na hlavnú tabuľku `documents`. Do tej istej SQLite DB ide aj
-`users`, `sessions`, `settings` — jeden súbor, nie kombinácia SQLite +
-JSON.
+Use SQLite with an FTS5 virtual table (`documents_fts`), kept in sync via
+triggers on the main `documents` table. `users`, `sessions`, and
+`settings` go into the same SQLite database — one file, not a mix of
+SQLite and JSON.
 
-## Dôsledky
+## Consequences
 
-- Stále jeden súbor, žiadna extra služba (žiadny Postgres/Elasticsearch),
-  rovnako prenositeľné ako Heimdallov prístup.
-- FTS5 je súčasť štandardnej Python `sqlite3` knižnice (overené na tomto
-  hostiteľovi) — žiadna nová systémová závislosť.
-- Odchýlka od house convention je vedomá a lokálna k tomuto projektu —
-  nemení nič na Heimdalli ani inde.
+- Still a single file, no extra service (no Postgres/Elasticsearch),
+  equally portable as Heimdall's approach.
+- FTS5 ships as part of Python's standard `sqlite3` library (verified on
+  this host) — no new system dependency.
+- The deviation from house convention is deliberate and local to this
+  project — it doesn't change anything about Heimdall or elsewhere.

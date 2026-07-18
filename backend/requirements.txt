@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 cryptography
+anthropic
+watchdog
+python-multipart

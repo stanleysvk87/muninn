@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -5,6 +7,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .api.routes import router as api_router
 from .auth.middleware import AuthMiddleware
 from .config import settings
+from .ingest import mail_ingest
+from .ingest.watch_folder import stop_all as stop_watch_folders
+from .ingest.watch_folder import sync_watch_folders
 
 app = FastAPI(title="Muninn")
 
@@ -37,3 +42,14 @@ app.include_router(api_router)
 
 # Frontend static-file serving (SPA fallback, GZip, cache headers) is added
 # in Phase 5 once frontend/dist exists — see docs ARCHITECTURE.md.
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    sync_watch_folders()
+    asyncio.create_task(mail_ingest.run_forever())
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    stop_watch_folders()

@@ -1,6 +1,6 @@
 .env
-data/
-archive/
+/backend/data/
+/backend/archive/
 *.db
 *.pyc
 __pycache__/

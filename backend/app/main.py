@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,12 @@ from .config import settings
 from .ingest import mail_ingest
 from .ingest.watch_folder import stop_all as stop_watch_folders
 from .ingest.watch_folder import sync_watch_folders
+
+# uvicorn only configures its own access/error loggers -- without this, any
+# logger.info() elsewhere (e.g. mail_ingest's poll activity) is silently
+# dropped by the default root logger level (WARNING), which is exactly what
+# happened while debugging the mail poller going quiet.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
 app = FastAPI(title="Muninn")
 

@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from .. import crypto
-from ..settings_store import get_setting
+from ..settings_store import get_setting, set_setting
 from . import pipeline
 
 logger = logging.getLogger("muninn.mail")
@@ -38,37 +38,60 @@ def _poll_once(config: dict) -> None:
     password_encrypted = config.get("password_encrypted")
     password = crypto.decrypt(password_encrypted) if password_encrypted else config.get("password", "")
 
+    # Track progress by UID (our own watermark) rather than the \Seen flag --
+    # \Seen can end up set by something other than us (e.g. server-side spam
+    # scanning previewing the message), which would silently hide a message
+    # from a SEARCH UNSEEN poll before we ever got a chance to look at it.
+    # This bit us in production: a real forwarded mail arrived already \Seen
+    # and was never picked up.
+    last_uid = get_setting("mail_last_uid", 0)
+
     conn = imaplib.IMAP4_SSL(config["host"], config.get("port", 993))
     try:
         conn.login(config["username"], password)
         conn.select("INBOX")
-        status, data = conn.search(None, "UNSEEN")
+        status, data = conn.uid("search", None, f"UID {last_uid + 1}:*")
         if status != "OK":
+            logger.warning("Mail poll: UID search zlyhalo (status=%s)", status)
             return
-        for uid in data[0].split():
+
+        # IMAP quirk: a "X:*" range where X is past the highest existing UID
+        # still returns the highest UID instead of nothing -- filter those out.
+        uids = sorted({int(u) for u in data[0].split() if int(u) > last_uid})
+        if not uids:
+            return
+
+        logger.info("Mail poll: %d novych sprav (UID > %d)", len(uids), last_uid)
+        for uid in uids:
             _process_message(conn, uid)
+            last_uid = uid
+            set_setting("mail_last_uid", last_uid)
     finally:
         conn.logout()
 
 
-def _process_message(conn: imaplib.IMAP4_SSL, uid: bytes) -> None:
-    status, msg_data = conn.fetch(uid, "(RFC822)")
-    if status != "OK":
+def _process_message(conn: imaplib.IMAP4_SSL, uid: int) -> None:
+    status, msg_data = conn.uid("fetch", str(uid), "(RFC822)")
+    if status != "OK" or not msg_data or msg_data[0] is None:
+        logger.warning("Mail poll: fetch UID %d zlyhalo", uid)
         return
 
     message = email.message_from_bytes(msg_data[0][1])
+    found_attachment = False
     for part in message.walk():
         filename = part.get_filename()
         payload = part.get_payload(decode=True)
         if not filename or not payload:
             continue
+        found_attachment = True
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
             tmp.write(payload)
             tmp_path = Path(tmp.name)
         try:
-            pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid.decode()}")
+            pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid}")
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    conn.store(uid, "+FLAGS", "\\Seen")
+    if not found_attachment:
+        logger.info("Mail poll: UID %d nema ziadnu prilohu, preskakujem", uid)

@@ -63,9 +63,13 @@ def get_facets():
         """SELECT doc_type, COUNT(*) AS count FROM documents
            WHERE status = 'processed' GROUP BY doc_type ORDER BY count DESC LIMIT 20"""
     ).fetchall()
+    failed_count = execute(
+        "SELECT COUNT(*) AS count FROM documents WHERE status = 'failed'"
+    ).fetchone()["count"]
     return {
         "correspondents": [_row_to_dict(r) for r in correspondents],
         "doc_types": [_row_to_dict(r) for r in doc_types],
+        "failed_count": failed_count,
     }
 
 

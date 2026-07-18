@@ -17,6 +17,7 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
 
   const totalDocs = facets ? facets.correspondents.reduce((sum, c) => sum + c.count, 0) : null;
   const totalCorrespondents = facets ? facets.correspondents.length : null;
+  const failedCount = facets ? facets.failed_count : 0;
 
   return (
     <div>
@@ -43,6 +44,12 @@ export default function Dashboard({ onOpenDocument, onNavigate }) {
           <div className="eyebrow">Firiem / osob</div>
           <div style={{ fontSize: 32, fontFamily: "var(--font-display)", marginTop: 6 }}>{totalCorrespondents ?? "-"}</div>
         </Card>
+        {failedCount > 0 && (
+          <Card hover onClick={() => onNavigate("search")} style={{ cursor: "pointer", borderColor: "var(--color-warning)" }}>
+            <div className="eyebrow" style={{ color: "var(--color-warning)" }}>Zlyhalo spracovanie</div>
+            <div style={{ fontSize: 32, fontFamily: "var(--font-display)", marginTop: 6, color: "var(--color-warning)" }}>{failedCount}</div>
+          </Card>
+        )}
       </div>
 
       <h3 style={{ marginBottom: 12 }}>Naposledy pridane</h3>

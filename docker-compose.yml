@@ -20,4 +20,7 @@ services:
       - ${HOME}/.claude:/home/muninn/.claude:ro
       - ${MUNINN_CLAUDE_BIN_HOST_PATH}:/usr/local/bin/claude:ro
       - /mnt/storage/data/claude-global:/mnt/storage/data/claude-global:ro
+      # Drop-zone watch folder on Barracuda -- registered as a watch folder
+      # in Settings, same container-side path as the host so it's unambiguous.
+      - /mnt/storage/data/muninn-inbox:/mnt/storage/data/muninn-inbox
     restart: unless-stopped

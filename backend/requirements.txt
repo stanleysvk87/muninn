@@ -5,3 +5,4 @@ cryptography
 anthropic
 watchdog
 python-multipart
+Pillow

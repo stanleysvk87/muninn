@@ -6,12 +6,36 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from PIL import Image, ImageOps, UnidentifiedImageError
+
 from ..ai_engine import get_provider_chain
 from ..ai_engine.base import ExtractionError
-from ..archive.store import place
+from ..archive.store import park_duplicate, place
 from ..db import execute
 
 AMOUNT_RE = re.compile(r"([\d]+(?:[.,]\d+)?)\s*([A-Za-z]{2,3})?")
+
+# Phone photos are routinely 3000-4000px on the long side, which is far more
+# resolution than needed to read text and burns a lot of extra input tokens
+# per AI call. Downscaling before the AI call keeps the text legible while
+# cutting token/cost per image roughly in half to two-thirds.
+MAX_IMAGE_DIMENSION = 2000
+
+
+def _downscale_image(path: Path, mime_type: str) -> None:
+    if not mime_type.startswith("image/"):
+        return
+    try:
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
+            if max(img.size) <= MAX_IMAGE_DIMENSION:
+                return
+            img.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.LANCZOS)
+            img.save(path)
+    except (UnidentifiedImageError, OSError):
+        # Not a format Pillow understands (or a truncated file) -- let the AI
+        # provider deal with the original, this isn't fatal to the job.
+        pass
 
 
 def _parse_amount(amount_raw: str | None) -> tuple[float | None, str | None]:
@@ -49,6 +73,7 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         (file_hash,),
     ).fetchone()
     if existing is not None:
+        park_duplicate(file_path)
         return {"document_id": existing["id"], "duplicate": True}
 
     # Stage a COPY into an isolated per-job temp dir so the AI provider only ever
@@ -57,6 +82,7 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
     with tempfile.TemporaryDirectory(prefix="muninn-job-") as tmp:
         staged = Path(tmp) / original_filename
         shutil.copy2(file_path, staged)
+        _downscale_image(staged, mime_type)
 
         # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
         # fails at call time (e.g. usage limits hit, not just "not installed"),

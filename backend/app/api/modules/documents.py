@@ -53,9 +53,42 @@ def list_documents(
     return [_row_to_dict(r) for r in rows]
 
 
+@router.get("/facets")
+def get_facets():
+    correspondents = execute(
+        """SELECT correspondent, COUNT(*) AS count FROM documents
+           WHERE status = 'processed' GROUP BY correspondent ORDER BY count DESC LIMIT 20"""
+    ).fetchall()
+    doc_types = execute(
+        """SELECT doc_type, COUNT(*) AS count FROM documents
+           WHERE status = 'processed' GROUP BY doc_type ORDER BY count DESC LIMIT 20"""
+    ).fetchall()
+    return {
+        "correspondents": [_row_to_dict(r) for r in correspondents],
+        "doc_types": [_row_to_dict(r) for r in doc_types],
+    }
+
+
+def _parse_ids(ids: str) -> list[int]:
+    try:
+        return [int(part) for part in ids.split(",") if part.strip()]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Neplatny zoznam id") from exc
+
+
 @router.get("/export")
-def export_documents(format: str = "json", q: str | None = None):
-    rows = list_documents(q=q, limit=10000, offset=0)
+def export_documents(format: str = "json", q: str | None = None, ids: str | None = None):
+    if ids:
+        id_list = _parse_ids(ids)
+        placeholders = ",".join("?" * len(id_list))
+        rows = [
+            _row_to_dict(r)
+            for r in execute(
+                f"SELECT * FROM documents WHERE id IN ({placeholders})", tuple(id_list)
+            ).fetchall()
+        ]
+    else:
+        rows = list_documents(q=q, limit=10000, offset=0)
 
     if format == "json":
         return rows
@@ -134,6 +167,16 @@ def update_document(document_id: int, payload: dict):
             (*fields.values(), document_id),
         )
     return get_document(document_id)
+
+
+@router.delete("")
+def bulk_delete_documents(ids: str):
+    id_list = _parse_ids(ids)
+    if not id_list:
+        raise HTTPException(status_code=422, detail="Ziadne id na zmazanie")
+    placeholders = ",".join("?" * len(id_list))
+    execute(f"DELETE FROM documents WHERE id IN ({placeholders})", tuple(id_list))
+    return {"deleted": len(id_list)}
 
 
 @router.delete("/{document_id}")

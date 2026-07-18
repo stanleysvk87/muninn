@@ -27,16 +27,29 @@ def _parse_amount(amount_raw: str | None) -> tuple[float | None, str | None]:
     return value, match.group(2)
 
 
-def process(file_path: Path, source: str, source_detail: str | None = None) -> int:
+def process(file_path: Path, source: str, source_detail: str | None = None) -> dict:
     """Extract metadata from file_path via the configured AI provider, archive it on
     success, and record it in the documents table. On failure the file is left where
-    it was (not moved) so it can be inspected or retried. Returns the new document id.
+    it was (not moved) so it can be inspected or retried. Returns
+    {"document_id": int, "duplicate": bool} -- duplicate is True when a byte-identical
+    file was already archived and this call short-circuited without re-running AI
+    extraction.
     """
     original_filename = file_path.name
     mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
     file_size = file_path.stat().st_size
     file_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
     now = datetime.now(timezone.utc).isoformat()
+
+    # Byte-identical file already archived (e.g. the same scan uploaded twice,
+    # or a watch-folder re-sync) -- skip the AI call entirely and point back
+    # at the existing record instead of creating a duplicate.
+    existing = execute(
+        "SELECT id FROM documents WHERE file_hash = ? AND status = 'processed' LIMIT 1",
+        (file_hash,),
+    ).fetchone()
+    if existing is not None:
+        return {"document_id": existing["id"], "duplicate": True}
 
     # Stage a COPY into an isolated per-job temp dir so the AI provider only ever
     # gets read access to this one document, never the shared inbox/watch-folder
@@ -78,7 +91,7 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> i
                     source_detail, mime_type, file_size, file_hash, error_message, now, now,
                 ),
             )
-            return cur.lastrowid
+            return {"document_id": cur.lastrowid, "duplicate": False}
 
     dest = place(file_path, result["correspondent"], result["doc_type"], result["doc_date"])
     stored_path = str(dest)
@@ -97,4 +110,4 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> i
             result["raw_response"], mime_type, file_size, file_hash, now, now,
         ),
     )
-    return cur.lastrowid
+    return {"document_id": cur.lastrowid, "duplicate": False}

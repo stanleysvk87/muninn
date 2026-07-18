@@ -16,7 +16,11 @@ export default function Upload() {
     formData.append("file", file);
     try {
       const res = await api.post("/upload", formData);
-      setMessage(`Nahrane a spracovane (dokument #${res.data.document_id})`);
+      setMessage(
+        res.data.duplicate
+          ? `Tento dokument uz mas archivovany (dokument #${res.data.document_id}) - nespracovane znova`
+          : `Nahrane a spracovane (dokument #${res.data.document_id})`,
+      );
     } catch (err) {
       setError(err.response?.data?.detail || "Nahratie zlyhalo");
     } finally {

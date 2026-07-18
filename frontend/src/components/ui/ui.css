@@ -104,13 +104,17 @@
   border-color: var(--color-warning);
 }
 
+.data-table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+}
 .data-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  overflow: hidden;
 }
 .data-table th, .data-table td {
   padding: 12px 16px;
@@ -131,4 +135,14 @@
 .data-table tbody tr:hover {
   background: rgba(148, 163, 184, 0.06);
   cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .hide-mobile {
+    display: none;
+  }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
 }

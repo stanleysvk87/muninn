@@ -1,50 +1,36 @@
 import { useEffect, useState } from "react";
 import api from "./api/client";
 import "./components/ui/ui.css";
-import Button from "./components/ui/Button.jsx";
+import "./components/layout/layout.css";
+import Sidebar from "./components/layout/Sidebar.jsx";
+import Dashboard from "./pages/Dashboard/Dashboard.jsx";
 import DocumentDetail from "./pages/DocumentDetail/DocumentDetail.jsx";
 import Login from "./pages/Login/Login.jsx";
 import Search from "./pages/Search/Search.jsx";
 import Settings from "./pages/Settings/Settings.jsx";
 import Upload from "./pages/Upload/Upload.jsx";
 
-function parsePath(path) {
-  if (path.startsWith("/documents/")) {
-    return { page: "document", id: path.slice("/documents/".length) };
-  }
-  if (path === "/upload") return { page: "upload" };
-  if (path === "/settings") return { page: "settings" };
-  return { page: "search" };
-}
-
-function navigate(path) {
-  window.history.pushState({}, "", path);
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
-
-const navStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "16px 24px",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-ink-secondary)",
+const PATH_BY_PAGE = {
+  dashboard: "/",
+  search: "/hladanie",
+  upload: "/nahrat",
+  settings: "/nastavenia",
 };
 
-function NavLink({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="btn btn-ghost"
-      style={{
-        color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-        borderBottom: active ? "2px solid var(--color-blue-light)" : "2px solid transparent",
-        borderRadius: 0,
-      }}
-    >
-      {label}
-    </button>
-  );
+function parsePath(path) {
+  if (path.startsWith("/dokumenty/")) {
+    return { page: "document", id: path.slice("/dokumenty/".length) };
+  }
+  if (path === "/hladanie") return { page: "search" };
+  if (path === "/nahrat") return { page: "upload" };
+  if (path === "/nastavenia") return { page: "settings" };
+  return { page: "dashboard" };
+}
+
+function navigate(page, id) {
+  const path = page === "document" ? `/dokumenty/${id}` : PATH_BY_PAGE[page] || "/";
+  window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 export default function App() {
@@ -88,28 +74,18 @@ export default function App() {
   }
 
   return (
-    <div>
-      <nav style={navStyle}>
-        <div className="eyebrow" style={{ fontSize: 14, letterSpacing: "0.1em" }}>
-          MUNINN
+    <div className="app-shell">
+      <Sidebar currentPage={route.page} onNavigate={navigate} user={user} onLogout={logout} />
+      <main className="app-main">
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
+          {route.page === "dashboard" && (
+            <Dashboard onOpenDocument={(id) => navigate("document", id)} onNavigate={navigate} />
+          )}
+          {route.page === "search" && <Search onOpenDocument={(id) => navigate("document", id)} />}
+          {route.page === "upload" && <Upload />}
+          {route.page === "document" && <DocumentDetail documentId={route.id} onBack={() => navigate("dashboard")} />}
+          {route.page === "settings" && <Settings />}
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <NavLink label="Hladanie" active={route.page === "search"} onClick={() => navigate("/")} />
-          <NavLink label="Nahrat" active={route.page === "upload"} onClick={() => navigate("/upload")} />
-          <NavLink label="Nastavenia" active={route.page === "settings"} onClick={() => navigate("/settings")} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>{user.username}</span>
-          <Button variant="ghost" onClick={logout}>
-            Odhlasit
-          </Button>
-        </div>
-      </nav>
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
-        {route.page === "search" && <Search onOpenDocument={(id) => navigate(`/documents/${id}`)} />}
-        {route.page === "upload" && <Upload />}
-        {route.page === "document" && <DocumentDetail documentId={route.id} onBack={() => navigate("/")} />}
-        {route.page === "settings" && <Settings />}
       </main>
     </div>
   );

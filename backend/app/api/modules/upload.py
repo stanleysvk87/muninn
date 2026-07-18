@@ -19,10 +19,10 @@ async def upload(file: UploadFile):
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
 
-    document_id = pipeline.process(dest, source="upload")
+    result = pipeline.process(dest, source="upload")
     # On success pipeline.process already moved dest into the archive; on
     # failure it's left here and this cleanup discards it (upload source
     # files aren't worth preserving on disk the way watch-folder ones are —
     # the user still has the original on their device to re-upload).
     shutil.rmtree(tmp_dir, ignore_errors=True)
-    return {"document_id": document_id}
+    return result

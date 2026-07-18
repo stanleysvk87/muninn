@@ -3,10 +3,14 @@ import re
 import subprocess
 from pathlib import Path
 
-from .base import ExtractionError, ExtractionResult
+from .base import ExtractionError, ExtractionResult, ProviderUnavailableError
 from .prompt import build_prompt, read_inline_text
 
 JSON_SPAN_RE = re.compile(r"\{.*\}", re.DOTALL)
+# HTTP-ish statuses claude -p's own JSON error envelope can report that mean
+# "the provider itself is unavailable right now" (auth/rate-limit/overload),
+# as opposed to a genuine content problem.
+UNAVAILABLE_API_STATUSES = {401, 403, 429, 500, 502, 503, 529}
 
 
 class ClaudeCLIProvider:
@@ -40,9 +44,25 @@ class ClaudeCLIProvider:
                 timeout=120,
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
-            raise ExtractionError(f"claude -p zlyhalo: {exc}") from exc
+            # Timeout or the binary/runtime isn't there at all -- claude
+            # itself never got a chance to respond either way.
+            raise ProviderUnavailableError(f"claude -p zlyhalo: {exc}") from exc
 
         if proc.returncode != 0:
+            # claude -p still emits a JSON error envelope on some failures
+            # (auth rejected, rate limited, API overloaded) even with a
+            # non-zero exit code -- api_error_status there means the
+            # provider itself is unavailable right now, not that this
+            # document's content is the problem.
+            try:
+                error_envelope = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                error_envelope = None
+            if error_envelope and error_envelope.get("api_error_status") in UNAVAILABLE_API_STATUSES:
+                raise ProviderUnavailableError(
+                    f"claude -p API chyba {error_envelope.get('api_error_status')}: "
+                    f"{error_envelope.get('result')}"
+                )
             raise ExtractionError(f"claude -p vratilo chybu: {proc.stderr[:500]}")
 
         try:

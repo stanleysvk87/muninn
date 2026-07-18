@@ -100,6 +100,29 @@
   border-top: 1px solid var(--color-border);
 }
 
+.language-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+.language-switcher select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  background: var(--color-ink);
+  color: var(--color-text-primary);
+}
+.sidebar.slim .language-switcher {
+  padding: 0;
+}
+.sidebar.slim .language-switcher select {
+  padding: 7px 4px;
+  font-size: 12px;
+}
+
 .sidebar-collapse-btn {
   display: flex;
   align-items: center;
@@ -152,6 +175,13 @@
   .sidebar.slim .brand-name,
   .sidebar.slim .nav-label {
     display: inline;
+  }
+  .sidebar.slim .language-switcher {
+    padding: 0 4px;
+  }
+  .sidebar.slim .language-switcher select {
+    padding: 7px 8px;
+    font-size: 14px;
   }
   .sidebar-collapse-btn {
     display: none;

@@ -6,6 +6,7 @@ import ErrorState from "../../components/ui/ErrorState";
 import LoadingBlock from "../../components/ui/LoadingBlock";
 import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
+import { useI18n } from "../../i18n.jsx";
 
 const inputStyle = {
   padding: "8px 12px",
@@ -15,28 +16,14 @@ const inputStyle = {
   color: "var(--color-text-primary)",
 };
 
-const REVIEW_STATUSES = [
-  { value: "na_kontrolu", label: "Na kontrolu" },
-  { value: "zaplatit", label: "Zaplatit" },
-  { value: "vybavene", label: "Vybavene" },
-  { value: "zamietnute", label: "Zamietnute" },
-  { value: "archiv", label: "Archiv" },
-];
+const REVIEW_STATUSES = ["na_kontrolu", "zaplatit", "vybavene", "zamietnute", "archiv"];
 
 const RECURRENCE_OPTIONS = [
-  { value: "", label: "Ziadne" },
-  { value: "monthly", label: "Mesacne" },
-  { value: "quarterly", label: "Stvrtrocne" },
-  { value: "yearly", label: "Rocne" },
+  "",
+  "monthly",
+  "quarterly",
+  "yearly",
 ];
-
-function recurrenceLabel(value) {
-  return RECURRENCE_OPTIONS.find((item) => item.value === value)?.label || value;
-}
-
-function reviewLabel(value) {
-  return REVIEW_STATUSES.find((item) => item.value === value)?.label || value || "-";
-}
 
 function Field({ label, value }) {
   return (
@@ -57,6 +44,7 @@ function LabeledInput({ label, value, onChange }) {
 }
 
 export default function DocumentDetail({ documentId, onBack }) {
+  const { duplicateReason, eventMessage, recurrenceLabel, reviewLabel, t } = useI18n();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -78,7 +66,7 @@ export default function DocumentDetail({ documentId, onBack }) {
         setEvents(eventRes.data);
         setDuplicates(duplicateRes.data);
       })
-      .catch((err) => setError(err.response?.data?.detail || "Dokument sa nenasiel"));
+      .catch((err) => setError(err.response?.data?.detail || t("detail.notFound")));
   }, [documentId]);
 
   async function refreshSideData() {
@@ -106,7 +94,7 @@ export default function DocumentDetail({ documentId, onBack }) {
   }
 
   async function remove() {
-    if (!window.confirm("Naozaj zmazat tento dokument?")) return;
+    if (!window.confirm(t("detail.deleteConfirm"))) return;
     await api.delete(`/documents/${documentId}`);
     onBack();
   }
@@ -143,33 +131,33 @@ export default function DocumentDetail({ documentId, onBack }) {
   return (
     <div>
       <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 16 }}>
-        &larr; Spat na hladanie
+        &larr; {t("detail.back")}
       </button>
       <PageHeader eyebrow={`Dokument #${doc.id}`} title={doc.correspondent} actions={<StatusBadge status={doc.status} />} />
       <Card>
         {!editing ? (
           <>
-            <Field label="Review stav" value={reviewLabel(doc.review_status)} />
-            <Field label="Typ" value={doc.doc_type} />
-            <Field label="Datum" value={doc.doc_date} />
-            {doc.expiry_date && <Field label="Plati do" value={doc.expiry_date} />}
-            {doc.expiry_dismissed_at && <Field label="Upozornenie" value={`Vybavene ${doc.expiry_dismissed_at}`} />}
+            <Field label={t("detail.reviewStatus")} value={reviewLabel(doc.review_status)} />
+            <Field label={t("detail.type")} value={doc.doc_type} />
+            <Field label={t("detail.date")} value={doc.doc_date} />
+            {doc.expiry_date && <Field label={t("detail.validUntil")} value={doc.expiry_date} />}
+            {doc.expiry_dismissed_at && <Field label={t("detail.alert")} value={t("detail.doneAt", { date: doc.expiry_dismissed_at })} />}
             {doc.notify_recurrence && (
               <Field
-                label="Opakovane upozornenie"
-                value={`${recurrenceLabel(doc.notify_recurrence)}${doc.next_recurrence_at ? ` (dalsie ${doc.next_recurrence_at})` : ""}`}
+                label={t("detail.recurrence")}
+                value={`${recurrenceLabel(doc.notify_recurrence)}${doc.next_recurrence_at ? ` (${t("detail.next", { date: doc.next_recurrence_at })})` : ""}`}
               />
             )}
-            <Field label="Suma" value={doc.amount_value != null ? `${doc.amount_value} ${doc.amount_currency || ""}` : "-"} />
-            <Field label="Zhrnutie" value={doc.summary} />
-            <Field label="Zdroj" value={doc.source} />
-            <Field label="Povodny nazov" value={doc.original_filename} />
-            <Field label="Ulozene v" value={doc.stored_path} />
-            {doc.error_message && <Field label="Chyba" value={doc.error_message} />}
+            <Field label={t("detail.amount")} value={doc.amount_value != null ? `${doc.amount_value} ${doc.amount_currency || ""}` : "-"} />
+            <Field label={t("detail.summary")} value={doc.summary} />
+            <Field label={t("detail.source")} value={doc.source} />
+            <Field label={t("detail.originalName")} value={doc.original_filename} />
+            <Field label={t("detail.storedIn")} value={doc.stored_path} />
+            {doc.error_message && <Field label={t("common.error")} value={doc.error_message} />}
 
             {doc.evidence?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>AI evidence</div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>{t("detail.aiEvidence")}</div>
                 <div className="evidence-list">
                   {doc.evidence.map((item, index) => (
                     <div key={`${item.field}-${index}`} className="evidence-row">
@@ -184,20 +172,20 @@ export default function DocumentDetail({ documentId, onBack }) {
 
             {duplicates.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>Mozne duplikaty</div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>{t("detail.possibleDuplicates")}</div>
                 <div className="duplicate-list">
                   {duplicates.map((item) => (
                     <div key={item.id} className="duplicate-row">
                       <div>
                         <strong>#{item.match_id} {item.correspondent}</strong>
-                        <span>{item.reason} · {Math.round(item.score * 100)}%</span>
+                        <span>{duplicateReason(item.reason)} · {Math.round(item.score * 100)}%</span>
                       </div>
                       <div className="duplicate-actions">
                         <Button variant="secondary" onClick={() => updateDuplicate(item.id, "confirmed")}>
-                          Potvrdit
+                          {t("detail.confirmDuplicate")}
                         </Button>
                         <Button variant="ghost" onClick={() => updateDuplicate(item.id, "ignored")}>
-                          Ignorovat
+                          {t("detail.ignoreDuplicate")}
                         </Button>
                       </div>
                     </div>
@@ -222,71 +210,71 @@ export default function DocumentDetail({ documentId, onBack }) {
               {doc.status === "processed" && (
                 <>
                   <a className="btn btn-secondary" href={`/api/documents/${doc.id}/file`} target="_blank" rel="noreferrer">
-                    Zobrazit
+                    {t("common.view")}
                   </a>
                   <a className="btn btn-secondary" href={`/api/documents/${doc.id}/file?download=true`}>
-                    Stiahnut
+                    {t("common.download")}
                   </a>
                 </>
               )}
               <Button variant="secondary" onClick={() => setEditing(true)}>
-                Upravit
+                {t("common.edit")}
               </Button>
-              {REVIEW_STATUSES.filter((item) => item.value !== doc.review_status).slice(0, 3).map((item) => (
-                <Button key={item.value} variant="secondary" onClick={() => setReviewStatus(item.value)}>
-                  {item.label}
+              {REVIEW_STATUSES.filter((value) => value !== doc.review_status).slice(0, 3).map((value) => (
+                <Button key={value} variant="secondary" onClick={() => setReviewStatus(value)}>
+                  {reviewLabel(value)}
                 </Button>
               ))}
               {doc.expiry_date && !doc.expiry_dismissed_at && (
                 <Button variant="secondary" onClick={dismissExpiry}>
-                  Skryt upozornenie
+                  {t("detail.hideAlert")}
                 </Button>
               )}
               {doc.expiry_date && doc.expiry_dismissed_at && (
                 <Button variant="secondary" onClick={restoreExpiry}>
-                  Obnovit upozornenie
+                  {t("detail.restoreAlert")}
                 </Button>
               )}
               <Button variant="ghost" onClick={remove}>
-                Zmazat
+                {t("common.delete")}
               </Button>
             </div>
           </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <LabeledInput label="Firma" value={form.correspondent || ""} onChange={(v) => setForm({ ...form, correspondent: v })} />
-            <LabeledInput label="Typ" value={form.doc_type || ""} onChange={(v) => setForm({ ...form, doc_type: v })} />
-            <LabeledInput label="Datum (YYYY-MM-DD)" value={form.doc_date || ""} onChange={(v) => setForm({ ...form, doc_date: v })} />
-            <LabeledInput label="Plati do (YYYY-MM-DD)" value={form.expiry_date || ""} onChange={(v) => setForm({ ...form, expiry_date: v })} />
-            <LabeledInput label="Zhrnutie" value={form.summary || ""} onChange={(v) => setForm({ ...form, summary: v })} />
+            <LabeledInput label={t("detail.company")} value={form.correspondent || ""} onChange={(v) => setForm({ ...form, correspondent: v })} />
+            <LabeledInput label={t("detail.type")} value={form.doc_type || ""} onChange={(v) => setForm({ ...form, doc_type: v })} />
+            <LabeledInput label={t("detail.dateInput")} value={form.doc_date || ""} onChange={(v) => setForm({ ...form, doc_date: v })} />
+            <LabeledInput label={t("detail.validUntilInput")} value={form.expiry_date || ""} onChange={(v) => setForm({ ...form, expiry_date: v })} />
+            <LabeledInput label={t("detail.summary")} value={form.summary || ""} onChange={(v) => setForm({ ...form, summary: v })} />
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="eyebrow">Review stav</span>
+              <span className="eyebrow">{t("detail.reviewStatus")}</span>
               <select
                 value={form.review_status || "na_kontrolu"}
                 onChange={(e) => setForm({ ...form, review_status: e.target.value })}
                 style={inputStyle}
               >
-                {REVIEW_STATUSES.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
+                {REVIEW_STATUSES.map((value) => (
+                  <option key={value} value={value}>{reviewLabel(value)}</option>
                 ))}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="eyebrow">Opakovane upozornenie (napr. poistka, predplatne)</span>
+              <span className="eyebrow">{t("detail.recurrenceInput")}</span>
               <select
                 value={form.notify_recurrence || ""}
                 onChange={(e) => setForm({ ...form, notify_recurrence: e.target.value })}
                 style={inputStyle}
               >
-                {RECURRENCE_OPTIONS.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
+                {RECURRENCE_OPTIONS.map((value) => (
+                  <option key={value || "none"} value={value}>{recurrenceLabel(value)}</option>
                 ))}
               </select>
             </label>
             <div className="detail-actions">
-              <Button onClick={save}>Ulozit</Button>
+              <Button onClick={save}>{t("common.save")}</Button>
               <Button variant="ghost" onClick={() => setEditing(false)}>
-                Zrusit
+                {t("common.cancel")}
               </Button>
             </div>
           </div>
@@ -294,14 +282,14 @@ export default function DocumentDetail({ documentId, onBack }) {
       </Card>
 
       <Card style={{ marginTop: 16 }}>
-        <h3 style={{ marginBottom: 12 }}>Audit timeline</h3>
-        {events.length === 0 && <p style={{ color: "var(--color-text-secondary)" }}>Zatial ziadne udalosti.</p>}
+        <h3 style={{ marginBottom: 12 }}>{t("detail.auditTimeline")}</h3>
+        {events.length === 0 && <p style={{ color: "var(--color-text-secondary)" }}>{t("detail.noEvents")}</p>}
         {events.length > 0 && (
           <div className="timeline-list">
             {events.map((event) => (
               <div key={event.id} className="timeline-row">
                 <span>{event.created_at}</span>
-                <strong>{event.message}</strong>
+                <strong>{eventMessage(event)}</strong>
                 <small>{event.event_type} · {event.actor}</small>
               </div>
             ))}

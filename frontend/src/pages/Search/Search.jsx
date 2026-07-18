@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../api/client";
 import Button from "../../components/ui/Button.jsx";
 import DataTable from "../../components/ui/DataTable.jsx";
@@ -7,6 +7,7 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import LoadingBlock from "../../components/ui/LoadingBlock.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import StatusBadge from "../../components/ui/StatusBadge.jsx";
+import { useI18n } from "../../i18n.jsx";
 
 function Highlighted({ text }) {
   if (!text) return null;
@@ -17,55 +18,8 @@ function Highlighted({ text }) {
   });
 }
 
-const COLUMNS = [
-  { key: "correspondent", label: "Firma / osoba" },
-  { key: "doc_type", label: "Typ" },
-  { key: "doc_date", label: "Datum" },
-  { key: "expiry_date", label: "Plati do", hideOnMobile: true, render: (r) => r.expiry_date || "-" },
-  {
-    key: "amount_value",
-    label: "Suma",
-    hideOnMobile: true,
-    render: (r) => (r.amount_value != null ? `${r.amount_value} ${r.amount_currency || ""}` : "-"),
-  },
-  { key: "status", label: "Stav", sortable: false, render: (r) => <StatusBadge status={r.status} /> },
-  {
-    key: "summary",
-    label: "Zhrnutie",
-    sortable: false,
-    hideOnMobile: true,
-    render: (r) => (
-      <span style={{ color: "var(--color-text-secondary)" }}>
-        {r.match_snippet ? <Highlighted text={r.match_snippet} /> : (r.summary || "").slice(0, 80)}
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    label: "",
-    sortable: false,
-    render: (r) =>
-      r.status === "processed" ? (
-        <a
-          className="btn btn-ghost"
-          href={`/api/documents/${r.id}/file?download=true`}
-          onClick={(e) => e.stopPropagation()}
-          style={{ padding: "4px 10px", minHeight: "auto" }}
-        >
-          Stiahnut
-        </a>
-      ) : null,
-  },
-];
-
-const SAVED_VIEW_LABELS = {
-  review: "Na kontrolu",
-  pay: "Zaplatit",
-  failed: "Zlyhania",
-  duplicates: "Mozne duplikaty",
-};
-
 export default function Search({ expiringOnly = false, savedView = null, onOpenDocument, onNavigate }) {
+  const { savedViewLabel, t } = useI18n();
   const [q, setQ] = useState("");
   const [correspondent, setCorrespondent] = useState(null);
   const [docType, setDocType] = useState(null);
@@ -74,6 +28,47 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
   const [facets, setFacets] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const columns = useMemo(() => [
+    { key: "correspondent", label: t("table.correspondent") },
+    { key: "doc_type", label: t("table.type") },
+    { key: "doc_date", label: t("table.date") },
+    { key: "expiry_date", label: t("table.validUntil"), hideOnMobile: true, render: (r) => r.expiry_date || "-" },
+    {
+      key: "amount_value",
+      label: t("table.amount"),
+      hideOnMobile: true,
+      render: (r) => (r.amount_value != null ? `${r.amount_value} ${r.amount_currency || ""}` : "-"),
+    },
+    { key: "status", label: t("table.status"), sortable: false, render: (r) => <StatusBadge status={r.status} /> },
+    {
+      key: "summary",
+      label: t("table.summary"),
+      sortable: false,
+      hideOnMobile: true,
+      render: (r) => (
+        <span style={{ color: "var(--color-text-secondary)" }}>
+          {r.match_snippet ? <Highlighted text={r.match_snippet} /> : (r.summary || "").slice(0, 80)}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      label: "",
+      sortable: false,
+      render: (r) =>
+        r.status === "processed" ? (
+          <a
+            className="btn btn-ghost"
+            href={`/api/documents/${r.id}/file?download=true`}
+            onClick={(e) => e.stopPropagation()}
+            style={{ padding: "4px 10px", minHeight: "auto" }}
+          >
+            {t("common.download")}
+          </a>
+        ) : null,
+    },
+  ], [t]);
 
   useEffect(() => {
     api.get("/documents/facets").then((res) => setFacets(res.data));
@@ -91,7 +86,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
       : api.get("/documents", { params });
     request
       .then((res) => !cancelled && setRows(res.data))
-      .catch((err) => !cancelled && setError(err.response?.data?.detail || "Nepodarilo sa nacitat dokumenty"));
+      .catch((err) => !cancelled && setError(err.response?.data?.detail || t("search.loadFailed")));
     return () => {
       cancelled = true;
     };
@@ -115,7 +110,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
   }
 
   async function bulkDelete() {
-    if (!window.confirm(`Naozaj zmazat ${selected.size} vybranych dokumentov?`)) return;
+    if (!window.confirm(t("search.deleteConfirm", { count: selected.size }))) return;
     await api.delete("/documents", { params: { ids: [...selected].join(",") } });
     setSelected(new Set());
     setRows((prev) => prev.filter((r) => !selected.has(r.id)));
@@ -124,22 +119,22 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
   return (
     <div>
       <PageHeader
-        eyebrow="Archiv"
-        title={expiringOnly ? "Expiracie" : savedView ? SAVED_VIEW_LABELS[savedView] || "Pohlad" : "Hladanie"}
+        eyebrow={t("search.eyebrow")}
+        title={expiringOnly ? t("search.expirations") : savedView ? savedViewLabel(savedView, t("search.view")) : t("search.title")}
         description={
           expiringOnly
-            ? "Aktivne upozornenia, ktore este nie su oznacene ako vybavene."
+            ? t("search.expiringDescription")
             : savedView
-              ? "Ulozeny pracovny pohlad z dashboardu."
-              : "Zadaj meno firmy alebo cast textu (napr. 'uniqa')."
+              ? t("search.savedViewDescription")
+              : t("search.description")
         }
-        actions={(expiringOnly || savedView) ? <Button variant="secondary" onClick={() => onNavigate("search")}>Vsetky dokumenty</Button> : null}
+        actions={(expiringOnly || savedView) ? <Button variant="secondary" onClick={() => onNavigate("search")}>{t("search.allDocuments")}</Button> : null}
       />
       {!expiringOnly && !savedView && (
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Hladat..."
+          placeholder={t("search.placeholder")}
           style={{
             width: "100%",
             padding: "10px 14px",
@@ -156,7 +151,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
         <>
           <div className="filter-toolbar">
             <Button variant="secondary" onClick={() => setFiltersOpen((v) => !v)}>
-              Filtre
+              {t("search.filters")}
             </Button>
             {(docType || correspondent) && (
               <Button
@@ -166,7 +161,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
                   setCorrespondent(null);
                 }}
               >
-                Zrusit filtre
+                {t("search.clearFilters")}
               </Button>
             )}
           </div>
@@ -205,22 +200,22 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
 
       {selected.size > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "8px 16px", background: "var(--color-panel)", border: "1px solid var(--color-border)", borderRadius: 8 }}>
-          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{selected.size} oznacenych</span>
+          <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{t("search.selected", { count: selected.size })}</span>
           <a className="btn btn-secondary" href={`/api/documents/export?format=zip&ids=${[...selected].join(",")}`}>
-            Stiahnut ako ZIP
+            {t("search.downloadZip")}
           </a>
           <Button variant="ghost" onClick={bulkDelete}>
-            Zmazat oznacene
+            {t("search.deleteSelected")}
           </Button>
         </div>
       )}
 
       {error && <ErrorState>{error}</ErrorState>}
       {!error && rows === null && <LoadingBlock />}
-      {!error && rows && rows.length === 0 && <EmptyState>Ziadne dokumenty</EmptyState>}
+      {!error && rows && rows.length === 0 && <EmptyState>{t("search.empty")}</EmptyState>}
       {!error && rows && rows.length > 0 && (
         <DataTable
-          columns={COLUMNS}
+          columns={columns}
           rows={rows}
           onRowClick={(row) => onOpenDocument(row.id)}
           selectable
@@ -234,18 +229,18 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
                 checked={state.selected}
                 onClick={(e) => e.stopPropagation()}
                 onChange={state.toggleSelected}
-                aria-label={`Oznacit dokument ${row.original_filename || row.correspondent}`}
+                aria-label={t("search.selectDocument", { name: row.original_filename || row.correspondent })}
               />
               <div className="mobile-doc-main">
                 <strong>{row.correspondent}</strong>
-                <span>{row.doc_type || "-"}{row.expiry_date ? ` · plati do ${row.expiry_date}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
+                <span>{row.doc_type || "-"}{row.expiry_date ? ` · ${t("search.validUntil", { date: row.expiry_date })}` : row.doc_date ? ` · ${row.doc_date}` : ""}</span>
                 {row.match_snippet ? <p><Highlighted text={row.match_snippet} /></p> : row.summary && <p>{row.summary.slice(0, 120)}</p>}
               </div>
               <div className="mobile-doc-actions" onClick={(e) => e.stopPropagation()}>
                 <StatusBadge status={row.status} />
                 {row.status === "processed" && (
                   <a className="btn btn-ghost" href={`/api/documents/${row.id}/file?download=true`}>
-                    Stiahnut
+                    {t("common.download")}
                   </a>
                 )}
               </div>

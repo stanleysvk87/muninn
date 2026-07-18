@@ -1,15 +1,11 @@
-const LABELS = {
-  processed: "Spracovane",
-  failed: "Zlyhalo",
-  pending: "Caka",
-  processing: "Spracovava sa",
-};
+import { useI18n } from "../../i18n.jsx";
 
 export default function StatusBadge({ status }) {
+  const { t } = useI18n();
   return (
     <span className={`status-badge status-${status}`}>
       <span className="status-dot" />
-      {LABELS[status] || status}
+      {t(`status.${status}`) || status}
     </span>
   );
 }

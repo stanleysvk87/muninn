@@ -4,11 +4,30 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .base import ExtractionError, ExtractionResult
+from .base import ExtractionError, ExtractionResult, ProviderUnavailableError
 from .prompt import build_prompt, read_inline_text
 
 JSON_SPAN_RE = re.compile(r"\{.*\}", re.DOTALL)
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+# codex exec has no structured error envelope like claude -p does -- these
+# are stderr substrings seen for "the provider itself isn't usable right
+# now" failures (auth/quota/missing runtime), as opposed to a content
+# problem. Not exhaustive, just the ones observed in practice.
+UNAVAILABLE_STDERR_SIGNALS = (
+    "authentication",
+    "unauthorized",
+    "401",
+    "403",
+    "429",
+    "rate limit",
+    "quota",
+    "no such file or directory",  # e.g. missing `node` runtime for codex.js
+)
+
+
+def _is_unavailable(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return any(signal in lowered for signal in UNAVAILABLE_STDERR_SIGNALS)
 
 
 class CodexCLIProvider:
@@ -45,11 +64,13 @@ class CodexCLIProvider:
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except (subprocess.TimeoutExpired, OSError) as exc:
-            raise ExtractionError(f"codex exec zlyhalo: {exc}") from exc
+            raise ProviderUnavailableError(f"codex exec zlyhalo: {exc}") from exc
         finally:
             pass
 
         if proc.returncode != 0:
+            if _is_unavailable(proc.stderr or ""):
+                raise ProviderUnavailableError(f"codex exec vratilo chybu: {proc.stderr[:500]}")
             raise ExtractionError(f"codex exec vratilo chybu: {proc.stderr[:500]}")
 
         try:

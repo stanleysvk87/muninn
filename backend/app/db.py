@@ -82,6 +82,12 @@ _DEFAULT_SAVED_VIEWS = {
         "query": '{"status":"failed"}',
         "sort_order": 40,
     },
+    "pending": {
+        "label": "Vo fronte",
+        "description": "AI momentalne nedostupne - spracuju sa automaticky, ked provider nabehne.",
+        "query": '{"status":"pending"}',
+        "sort_order": 45,
+    },
     "duplicates": {
         "label": "Mozne duplikaty",
         "description": "Dokumenty s otvorenym duplikatovym warningom.",

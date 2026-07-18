@@ -11,11 +11,12 @@ import zipfile
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import NamedTuple
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from ..ai_engine import get_provider_chain
-from ..ai_engine.base import ExtractionError
+from ..ai_engine.base import AIProvider, ExtractionError, ProviderUnavailableError
 from ..audit import add_document_event, finish_ingest_job, start_ingest_job
 from ..archive.store import park_duplicate, park_failed, place
 from ..db import execute
@@ -347,6 +348,99 @@ def _parse_amount(amount_raw: str | None) -> tuple[float | None, str | None]:
     return value, match.group(2)
 
 
+class ChainResult(NamedTuple):
+    result: dict | None
+    provider: AIProvider | None
+    provider_name: str | None
+    provider_model: str | None
+    raw_response: str | None
+    full_text: str | None
+    # True only if every provider actually attempted failed with
+    # ProviderUnavailableError (rate limit/auth/timeout/missing binary) --
+    # i.e. nothing about this specific document is the problem, it's just
+    # that no provider could be reached. False if at least one provider
+    # genuinely tried and rejected the content, or the chain is configured
+    # but hasn't been attempted at all for some other reason.
+    all_unavailable: bool
+    error: ExtractionError | None
+
+
+def _extract_via_chain(file_path: Path, mime_type: str) -> ChainResult:
+    """Stage file_path into an isolated per-job temp dir (the AI provider
+    only ever gets read access to this one document, never the shared
+    inbox/watch-folder it came from -- see docs/adr, security tightening vs.
+    the bash prototype), convert it to plain text when a converter applies,
+    and try each provider in the configured chain until one succeeds."""
+    with tempfile.TemporaryDirectory(prefix="muninn-job-") as tmp:
+        staged = Path(tmp) / file_path.name
+        shutil.copy2(file_path, staged)
+        _downscale_image(staged, mime_type)
+        staged = (
+            _convert_odt_if_needed(staged)
+            or _convert_xlsx_if_needed(staged)
+            or _convert_pdf_if_needed(staged)
+            or _convert_html_if_needed(staged)
+            or staged
+        )
+        # If a conversion above produced a .txt, that's real extracted text
+        # (free, already computed) -- prefer it over asking the AI to
+        # transcribe it again in its JSON output. Only images/other formats
+        # without a converter fall back to the AI's own full_text field.
+        converted_text = (
+            staged.read_text(encoding="utf-8", errors="replace")
+            if staged.suffix.lower() == ".txt"
+            else None
+        )
+
+        # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
+        # fails at call time (e.g. usage limits hit, not just "not installed"),
+        # fall through to the next rather than failing the whole document.
+        chain = get_provider_chain()
+        result = None
+        provider = None
+        last_error: ExtractionError | None = None
+        last_provider_name: str | None = None
+        last_provider_model: str | None = None
+        last_raw_response: str | None = None
+        all_unavailable = True
+        for candidate in chain:
+            candidate_result = None
+            last_provider_name = candidate.name
+            last_provider_model = candidate.model
+            try:
+                candidate_result = _strip_nul(candidate.extract(staged))
+                last_raw_response = candidate_result.get("raw_response")
+                _validate_result(candidate_result)
+                result = candidate_result
+                provider = candidate
+                break
+            except ExtractionError as exc:
+                if candidate_result is not None:
+                    last_raw_response = candidate_result.get("raw_response")
+                if not isinstance(exc, ProviderUnavailableError):
+                    all_unavailable = False
+                last_error = exc
+                logger.warning(
+                    "AI provider %s failed for %s: %s",
+                    candidate.name,
+                    file_path.name,
+                    exc,
+                )
+                continue
+
+        full_text = converted_text or (result.get("full_text") if result else None)
+        return ChainResult(
+            result=result,
+            provider=provider,
+            provider_name=last_provider_name,
+            provider_model=last_provider_model,
+            raw_response=last_raw_response,
+            full_text=full_text,
+            all_unavailable=all_unavailable,
+            error=last_error,
+        )
+
+
 def process(file_path: Path, source: str, source_detail: str | None = None) -> dict:
     """Extract metadata from file_path via the configured AI provider, archive it on
     success, and record it in the documents table. On failure the file is parked
@@ -389,113 +483,65 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         )
         return {"document_id": existing["id"], "duplicate": True, "status": "processed"}
 
-    # Stage a COPY into an isolated per-job temp dir so the AI provider only ever
-    # gets read access to this one document, never the shared inbox/watch-folder
-    # it came from (see docs/adr — security tightening vs. the bash prototype).
-    with tempfile.TemporaryDirectory(prefix="muninn-job-") as tmp:
-        staged = Path(tmp) / original_filename
-        shutil.copy2(file_path, staged)
-        _downscale_image(staged, mime_type)
-        staged = (
-            _convert_odt_if_needed(staged)
-            or _convert_xlsx_if_needed(staged)
-            or _convert_pdf_if_needed(staged)
-            or _convert_html_if_needed(staged)
-            or staged
-        )
-        # If a conversion above produced a .txt, that's real extracted text
-        # (free, already computed) -- prefer it over asking the AI to
-        # transcribe it again in its JSON output. Only images/other formats
-        # without a converter fall back to the AI's own full_text field.
-        converted_text = (
-            staged.read_text(encoding="utf-8", errors="replace")
-            if staged.suffix.lower() == ".txt"
-            else None
-        )
+    chain_result = _extract_via_chain(file_path, mime_type)
 
-        # In "auto" mode this is claude_cli -> codex_cli -> anthropic_api. If one
-        # fails at call time (e.g. usage limits hit, not just "not installed"),
-        # fall through to the next rather than failing the whole document.
-        chain = get_provider_chain()
-        result = None
-        provider = None
-        last_error: ExtractionError | None = None
-        last_provider_name: str | None = None
-        last_provider_model: str | None = None
-        last_raw_response: str | None = None
-        for candidate in chain:
-            candidate_result = None
-            last_provider_name = candidate.name
-            last_provider_model = candidate.model
+    if chain_result.result is None:
+        # If no provider could even be reached (rate limit/auth/timeout/
+        # missing binary, across the whole chain) this document's content
+        # was never actually the problem -- queue it for automatic retry
+        # (see queue_retry.py) instead of marking it a permanent failure.
+        status = "pending" if chain_result.all_unavailable else "failed"
+        error_message = (
+            str(chain_result.error) if chain_result.error is not None else
+            "Ziadny AI provider nie je k dispozicii - nainstaluj/prihlas sa do "
+            "claude alebo codex CLI, alebo nastav Anthropic API kluc v Nastaveniach"
+        )
+        failed_path = str(file_path)
+        if file_path.exists():
             try:
-                candidate_result = _strip_nul(candidate.extract(staged))
-                last_raw_response = candidate_result.get("raw_response")
-                _validate_result(candidate_result)
-                result = candidate_result
-                provider = candidate
-                break
-            except ExtractionError as exc:
-                if candidate_result is not None:
-                    last_raw_response = candidate_result.get("raw_response")
-                last_error = exc
-                logger.warning(
-                    "AI provider %s failed for %s: %s",
-                    candidate.name,
-                    original_filename,
-                    exc,
-                )
-                continue
+                failed_path = str(park_failed(file_path, source))
+            except OSError:
+                logger.exception("Nepodarilo sa odlozit zlyhany subor %s", file_path)
+        cur = execute(
+            """INSERT INTO documents
+                 (original_filename, stored_path, correspondent, doc_type, source,
+                  source_detail, ai_provider, ai_model, ai_raw_response, mime_type,
+                  file_size, file_hash, status, error_message,
+                  created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                original_filename, failed_path, "neznama-firma", "other", source,
+                source_detail, chain_result.provider_name, chain_result.provider_model,
+                chain_result.raw_response, mime_type, file_size, file_hash, status,
+                error_message, now, now,
+            ),
+        )
+        document_id = cur.lastrowid
+        finish_ingest_job(
+            job_id,
+            status=status,
+            document_id=document_id,
+            ai_provider=chain_result.provider_name,
+            error_message=error_message,
+        )
+        add_document_event(
+            document_id,
+            "ingest_pending" if status == "pending" else "ingest_failed",
+            error_message,
+            metadata={"source": source, "source_detail": source_detail},
+        )
+        return {
+            "document_id": document_id,
+            "duplicate": False,
+            "status": status,
+            "error_message": error_message,
+        }
 
-        if result is None:
-            error_message = (
-                str(last_error) if last_error is not None else
-                "Ziadny AI provider nie je k dispozicii - nainstaluj/prihlas sa do "
-                "claude alebo codex CLI, alebo nastav Anthropic API kluc v Nastaveniach"
-            )
-            failed_path = str(file_path)
-            if file_path.exists():
-                try:
-                    failed_path = str(park_failed(file_path, source))
-                except OSError:
-                    logger.exception("Nepodarilo sa odlozit zlyhany subor %s", file_path)
-            cur = execute(
-                """INSERT INTO documents
-                     (original_filename, stored_path, correspondent, doc_type, source,
-                      source_detail, ai_provider, ai_model, ai_raw_response, mime_type,
-                      file_size, file_hash, status, error_message,
-                      created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'failed', ?, ?, ?)""",
-                (
-                    original_filename, failed_path, "neznama-firma", "other", source,
-                    source_detail, last_provider_name, last_provider_model, last_raw_response,
-                    mime_type, file_size, file_hash, error_message, now, now,
-                ),
-            )
-            document_id = cur.lastrowid
-            finish_ingest_job(
-                job_id,
-                status="failed",
-                document_id=document_id,
-                ai_provider=last_provider_name,
-                error_message=error_message,
-            )
-            add_document_event(
-                document_id,
-                "ingest_failed",
-                error_message,
-                metadata={"source": source, "source_detail": source_detail},
-            )
-            return {
-                "document_id": document_id,
-                "duplicate": False,
-                "status": "failed",
-                "error_message": error_message,
-            }
-
+    result = chain_result.result
     dest = place(file_path, result["correspondent"], result["doc_type"], result["doc_date"])
     stored_path = str(dest)
     amount_value, amount_currency = _parse_amount(result["amount_raw"])
-    full_text = converted_text or result.get("full_text")
+    full_text = chain_result.full_text
 
     cur = execute(
         """INSERT INTO documents
@@ -507,8 +553,8 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         (
             original_filename, stored_path, result["correspondent"], result["doc_type"],
             result["doc_date"], result["expiry_date"], amount_value, amount_currency,
-            result["amount_raw"], result["summary"], source, source_detail, provider.name,
-            provider.model, result["raw_response"], mime_type, file_size, file_hash,
+            result["amount_raw"], result["summary"], source, source_detail, chain_result.provider.name,
+            chain_result.provider.model, result["raw_response"], mime_type, file_size, file_hash,
             result["cost_usd"], result["input_tokens"], result["output_tokens"],
             json.dumps(result.get("evidence") or [], ensure_ascii=False), full_text, now, now,
         ),
@@ -518,19 +564,94 @@ def process(file_path: Path, source: str, source_detail: str | None = None) -> d
         job_id,
         status="processed",
         document_id=document_id,
-        ai_provider=provider.name,
+        ai_provider=chain_result.provider.name,
     )
     add_document_event(
         document_id,
         "ingested",
-        f"Dokument spracovany cez {provider.name}",
+        f"Dokument spracovany cez {chain_result.provider.name}",
         metadata={
             "source": source,
             "source_detail": source_detail,
-            "model": provider.model,
+            "model": chain_result.provider.model,
             "input_tokens": result["input_tokens"],
             "output_tokens": result["output_tokens"],
         },
+    )
+    record_duplicate_candidates(document_id)
+    return {"document_id": document_id, "duplicate": False, "status": "processed"}
+
+
+def reprocess_document(document_id: int) -> dict:
+    """Re-run AI extraction for an existing failed/pending document, updating
+    its row in place. Unlike process() (which always inserts a new row --
+    appropriate for a first-time ingest), a retry must not accumulate a new
+    row every time it's attempted: the automatic pending-queue retry loop
+    (queue_retry.py) may call this many times for the same document before a
+    provider comes back, and the manual "Retry" button in Settings would
+    otherwise leave the original failed row behind as orphaned history."""
+    row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None:
+        return {"document_id": document_id, "status": None, "skipped": True}
+    if row["status"] not in ("failed", "pending"):
+        return {"document_id": document_id, "status": row["status"], "skipped": True}
+
+    path = Path(row["stored_path"])
+    if not path.is_file():
+        return {
+            "document_id": document_id,
+            "status": row["status"],
+            "skipped": True,
+            "error": "zdrojovy subor sa na disku nenasiel",
+        }
+
+    now = datetime.now(timezone.utc).isoformat()
+    mime_type = (
+        row["mime_type"]
+        or EXTENSION_MIME_TYPES.get(path.suffix.lower())
+        or mimetypes.guess_type(row["original_filename"])[0]
+        or "application/octet-stream"
+    )
+
+    chain_result = _extract_via_chain(path, mime_type)
+
+    if chain_result.result is None:
+        new_status = "pending" if chain_result.all_unavailable else "failed"
+        error_message = (
+            str(chain_result.error) if chain_result.error is not None else row["error_message"]
+        )
+        execute(
+            """UPDATE documents SET status = ?, error_message = ?, ai_provider = ?,
+                 ai_model = ?, updated_at = ? WHERE id = ?""",
+            (new_status, error_message, chain_result.provider_name, chain_result.provider_model, now, document_id),
+        )
+        return {
+            "document_id": document_id,
+            "duplicate": False,
+            "status": new_status,
+            "error_message": error_message,
+        }
+
+    result = chain_result.result
+    dest = place(path, result["correspondent"], result["doc_type"], result["doc_date"])
+    amount_value, amount_currency = _parse_amount(result["amount_raw"])
+
+    execute(
+        """UPDATE documents SET
+             stored_path = ?, correspondent = ?, doc_type = ?, doc_date = ?, expiry_date = ?,
+             amount_value = ?, amount_currency = ?, amount_raw = ?, summary = ?,
+             ai_provider = ?, ai_model = ?, ai_raw_response = ?, cost_usd = ?, input_tokens = ?,
+             output_tokens = ?, evidence_json = ?, full_text = ?, status = 'processed',
+             error_message = NULL, updated_at = ?
+           WHERE id = ?""",
+        (
+            str(dest), result["correspondent"], result["doc_type"], result["doc_date"],
+            result["expiry_date"], amount_value, amount_currency, result["amount_raw"],
+            result["summary"], chain_result.provider.name, chain_result.provider.model,
+            result["raw_response"], result["cost_usd"], result["input_tokens"],
+            result["output_tokens"], json.dumps(result.get("evidence") or [], ensure_ascii=False),
+            chain_result.full_text, now, document_id,
+        ),
     )
     record_duplicate_candidates(document_id)
     return {"document_id": document_id, "duplicate": False, "status": "processed"}

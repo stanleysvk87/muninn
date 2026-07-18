@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Muninn — Ochrana udajov</title>
+    <title>Muninn - Ochrana údajov</title>
     <style>
       :root {
         color-scheme: dark;
@@ -17,8 +17,14 @@
         line-height: 1.6;
       }
       .wrap {
-        max-width: 720px;
+        max-width: 760px;
         margin: 0 auto;
+      }
+      .topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
       }
       h1 {
         font-size: 24px;
@@ -30,6 +36,11 @@
         font-size: 12px;
         color: #7da1f2;
         margin-bottom: 8px;
+      }
+      .updated {
+        margin-top: 0;
+        color: #7da1f2;
+        font-size: 13px;
       }
       h2 {
         font-size: 16px;
@@ -45,100 +56,295 @@
         padding-left: 20px;
       }
       .note {
-        margin-top: 32px;
+        margin-top: 24px;
         padding: 16px;
         border: 1px solid #2456d6;
         border-radius: 8px;
         background: #0b1626;
         font-size: 13px;
       }
+      .warning {
+        border-color: #eac57d;
+        background: #1d1608;
+      }
       a {
         color: #7da1f2;
+      }
+      code {
+        color: #e7ebf3;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.95em;
+      }
+      select {
+        padding: 7px 8px;
+        border: 1px solid #2f3c54;
+        border-radius: 8px;
+        background: #111827;
+        color: #e7ebf3;
+      }
+      [data-lang-panel] {
+        display: none;
+      }
+      [data-lang-panel].active {
+        display: block;
       }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="eyebrow">Muninn</div>
-      <h1>Ochrana osobnych udajov a AI spracovanie</h1>
-      <p>
-        Tento dokument vysvetlava, ake udaje Muninn spracuva, kam sa posielaju a ake mas prava.
-        Nejde o formalne pravne stanovisko — je to technicky popis toho, ako appka funguje, napisany
-        zrozumitelne pre osobne/rodinne pouzitie.
-      </p>
-
-      <h2>Co sa spracuva</h2>
-      <p>
-        Kazdy dokument, ktory nahras (mailom, cez watch-priecinok, alebo priamym uploadom) — faktury,
-        zmluvy, poistky, doklady totoznosti, rodne listy a podobne — vratane vsetkych osobnych udajov,
-        ktore v nom su (mena, adresy, cisla dokladov, sumy, IBAN a pod.).
-      </p>
-
-      <h2>Kam sa obsah posiela</h2>
-      <p>
-        AI extrakcia (rozpoznanie firmy/typu/datumu/sumy z dokumentu) bezi cez jeden z nastavenych
-        poskytovatelov:
-      </p>
-      <ul>
-        <li><strong>Claude CLI</strong> — obsah dokumentu sa posiela na spracovanie do infrastruktury Anthropic, cez uz existujuce prihlasenie/predplatne.</li>
-        <li><strong>Codex CLI</strong> — obsah dokumentu sa posiela na spracovanie do infrastruktury OpenAI, cez uz existujuce prihlasenie/predplatne.</li>
-        <li><strong>Anthropic API kluc</strong> — priame API volanie do Anthropic, ak je nastavene ako fallback.</li>
-      </ul>
-      <p>
-        Ziadny z tychto poskytovatelov nedostava nic ine ako obsah konkretneho spracovavaneho
-        dokumentu v case extrakcie — nie prihlasovacie udaje, hesla ani zvysny obsah archivu.
-      </p>
-
-      <h2>Kde sa data ukladaju</h2>
-      <p>
-        Vsetko ostatne (archivovane subory, databaza, nastavenia) zostava lokalne na vlastnom serveri,
-        nie v ziadnej externej cloud databaze. Citlive polozky (heslo k mailu, Telegram bot token,
-        Anthropic API kluc) su v databaze ulozene sifrovane.
-      </p>
-
-      <h2>Prava a kontrola</h2>
-      <ul>
-        <li>Kazdy dokument sa da kedykolvek zobrazit, upravit alebo natrvalo zmazat (aj hromadne).</li>
-        <li>Cely archiv sa da exportovat (JSON/CSV/ZIP) cez export funkciu appky.</li>
-        <li>Retencia = kym dokument sam nezmazes, ziadne automaticke mazanie na pozadi.</li>
-        <li>Ucet sa da kedykolvek zrusit spravcom systemu.</li>
-      </ul>
-
-      <div class="note">
-        Muninn je nastroj na osobne/rodinne pouzitie (nie komercna sluzba tretim stranam), co pre
-        spracovanie vlastnych/rodinnych dokumentov typicky spada pod vynimku GDPR pre cisto osobnu/
-        domacu cinnost (cl. 2 ods. 2 pism. c) GDPR). Vytvorenim uctu potvrdzujes, ze rozumies vyssie
-        popisanemu spracovaniu (vratane odosielania obsahu dokumentov AI poskytovatelom) a suhlasis s nim.
+      <div class="topline">
+        <div class="eyebrow">Muninn</div>
+        <select id="language" aria-label="Jazyk / Language">
+          <option value="sk">SK</option>
+          <option value="en">EN</option>
+        </select>
       </div>
 
-      <h2>Zrieknutie sa zodpovednosti</h2>
-      <p>
-        Muninn je poskytovany "tak ako je" (as-is), bez akejkolvek zaruky, v sulade s podmienkami
-        licencie Apache 2.0, pod ktorou je tento softver vydany — vratane clanku 7 (Disclaimer of
-        Warranty) a clanku 8 (Limitation of Liability) tejto licencie.
-      </p>
-      <ul>
-        <li>
-          Spracovanie obsahu dokumentov prostrednictvom tretej strany (Anthropic, OpenAI) sa riadi
-          vylucne podmienkami pouzitia a zasadami ochrany sukromia danej tretej strany. Prevadzkovatel/
-          autor tejto instancie Muninn nema kontrolu nad tym, ako tato tretia strana s odoslanym obsahom
-          po jeho prijati nalozi, a nenesie za to ziadnu zodpovednost.
-        </li>
-        <li>
-          AI extrakcia (firma, typ, datum, suma, expiracia a pod.) moze byt nepresna alebo chybna.
-          Vysledky treba pred pouzitim na cokolvek dolezite (platba, pravny ukon, urad) overit
-          samostatne — appka negarantuje spravnost ani uplnost extrahovanych udajov.
-        </li>
-        <li>
-          Za zakonnost spracovania konkretnych dokumentov (napr. ak obsahuju osobne udaje tretich osob)
-          zodpoveda vyhradne pouzivatel/prevadzkovatel danej instancie, nie autor softveru.
-        </li>
-        <li>
-          Autor/prevadzkovatel nenesie zodpovednost za straty ci skody vzniknute pouzivanim appky,
-          vratane straty dat, nespravnej extrakcie, alebo vypadku sluzby tretej strany (AI poskytovatel,
-          mailserver a pod.).
-        </li>
-      </ul>
+      <article data-lang-panel="sk">
+        <h1>Ochrana osobných údajov a AI spracovanie</h1>
+        <p class="updated">Posledná aktualizácia: 18. júla 2026</p>
+        <p>
+          Tento dokument popisuje, ako táto inštancia aplikácie Muninn pracuje s dokumentmi a osobnými
+          údajmi. Je napísaný pre self-hosted osobné alebo rodinné použitie. Nie je to formálne právne
+          stanovisko ani univerzálna GDPR dokumentácia pre komerčné nasadenie.
+        </p>
+
+        <div class="note warning">
+          Ak sa Muninn začne používať pre klientov, zamestnancov, cudzie firmy alebo ako platená služba,
+          tento text nestačí. V takom režime treba samostatne určiť prevádzkovateľa, právny základ,
+          spracovateľov, zmluvy s poskytovateľmi AI služieb, pravidlá retencie a prípadné prenosy do
+          tretích krajín.
+        </div>
+
+        <h2>Kto určuje spracovanie</h2>
+        <p>
+          Pri osobnom nasadení účel a spôsob spracovania určuje osoba, ktorá túto inštanciu Muninn prevádzkuje.
+          Autor softvéru nemá prístup k obsahu archívu, dokumentom, databáze, prihlasovacím údajom ani k
+          nastaveniam konkrétnej inštancie.
+        </p>
+
+        <h2>Čo sa spracúva</h2>
+        <ul>
+          <li>Prihlasovací účet: používateľské meno, hash hesla, salt, rola, čas vytvorenia, posledné prihlásenie a potvrdenie súhlasu.</li>
+          <li>Session údaje: session token, CSRF secret, čas vytvorenia a expirácie, posledné použitie, user-agent a IP adresa.</li>
+          <li>Nahrané dokumenty: pôvodný súbor, názov súboru, veľkosť, MIME typ, hash súboru, zdroj nahratia a cesta uloženia.</li>
+          <li>Extrahované metadáta: firma alebo osoba, typ dokumentu, dátum, expirácia, suma, mena, zhrnutie, fulltext, AI dôkazy a stav spracovania.</li>
+          <li>AI odpovede a technické údaje: raw odpoveď modelu, použitý provider, model, prípadné tokeny, odhad nákladov a chybové hlášky.</li>
+          <li>Audit a prevádzkové údaje: audit timeline, ingest joby, záznamy o zlyhaniach, upozornenia na duplikáty a expiračné upozornenia.</li>
+          <li>Nastavenia: watch priečinky, mail/IMAP konfigurácia, Telegram nastavenia a AI provider mode.</li>
+        </ul>
+        <p>
+          Dokumenty môžu obsahovať citlivé alebo osobitné kategórie údajov, napríklad údaje o zdraví,
+          rodinnom stave, dokladoch totožnosti, financiách alebo deťoch. Muninn ich nerozlišuje automaticky
+          právne, spracúva ich technicky rovnako ako ostatné dokumenty.
+        </p>
+
+        <h2>Kam sa obsah posiela</h2>
+        <p>
+          AI extrakcia prebieha cez jeden z nakonfigurovaných providerov. Muninn izoluje spracovanie tak,
+          aby AI nástroj dostal prístup len ku konkrétnemu práve spracovávanému súboru, nie k celému archívu
+          ani k watch priečinku.
+        </p>
+        <ul>
+          <li><strong>Claude CLI</strong> - obsah dokumentu sa posiela do služby Anthropic cez prihlásený Claude účet alebo predplatné na danom stroji.</li>
+          <li><strong>Codex CLI</strong> - obsah dokumentu sa posiela do služby OpenAI cez prihlásený Codex/ChatGPT účet alebo príslušnú konfiguráciu CLI.</li>
+          <li><strong>Anthropic API kľúč</strong> - obsah dokumentu sa posiela cez Anthropic API, ak je API režim použitý ako fallback alebo explicitná voľba.</li>
+        </ul>
+        <p>
+          Pri odoslaní AI providerovi môže obsah dokumentu opustiť lokálny server a byť spracovaný infraštruktúrou
+          tretej strany. Retencia a použitie na tréning závisia od konkrétneho providera, typu účtu a nastavení
+          účtu. OpenAI uvádza, že API vstupy a výstupy sa predvolene nepoužívajú na tréning a abuse monitoring
+          logy môžu byť držané do 30 dní. Anthropic pre API/komerčné produkty uvádza automatické zmazanie
+          vstupov a výstupov z backendu do 30 dní, s výnimkami pre právne dôvody, bezpečnosť, dlhšie držané
+          funkcie alebo osobitnú dohodu. Pri spotrebiteľských Claude/Codex režimoch môžu platiť iné nastavenia
+          účtu, najmä voľby súvisiace s tréningom a históriou.
+        </p>
+
+        <h2>Kde sa dáta ukladajú</h2>
+        <p>
+          Archivované súbory, SQLite databáza, extrahovaný fulltext, raw AI odpovede, audit udalosti a nastavenia
+          zostávajú lokálne na serveri, na ktorom Muninn beží. Neodosielajú sa do externej databázy prevádzkovanej
+          autorom softvéru.
+        </p>
+        <p>
+          Citlivé konfiguračné hodnoty, napríklad heslo k mailu, Telegram bot token alebo Anthropic API kľúč,
+          sú v databáze uložené šifrovane pomocou kľúča <code>MUNINN_ENCRYPTION_KEY</code>. Bezpečnosť tejto
+          ochrany závisí aj od ochrany servera, <code>.env</code> súborov, záloh a prístupov k hostiteľskému systému.
+        </p>
+
+        <h2>Mail, Telegram a watch priečinky</h2>
+        <ul>
+          <li>Ak je zapnutý mail ingestion, prílohy a prípadne telo mailu sa spracúvajú z nakonfigurovanej IMAP schránky. Samotný mailserver môže mať vlastné logy, zálohy a retenčné pravidlá.</li>
+          <li>Ak sú zapnuté Telegram upozornenia, Muninn odosiela do Telegramu upozornenia na expiráciu. Text upozornenia môže obsahovať názov firmy/osoby, typ dokumentu a dátum expirácie.</li>
+          <li>Watch priečinky sú lokálne alebo mountnuté priečinky sledované aplikáciou. Súbor vložený do watch priečinka sa môže automaticky spracovať.</li>
+        </ul>
+
+        <h2>Kontrola, export a zmazanie</h2>
+        <ul>
+          <li>Dokument sa dá zobraziť, upraviť a zmazať v aplikácii.</li>
+          <li>Pri zmazaní dokumentu Muninn odstráni databázový záznam aj uložený súbor, ak sa súbor stále nachádza na očakávanej ceste.</li>
+          <li>Hromadné zmazanie používa rovnaký princíp: odstránenie súborov a následné odstránenie DB záznamov.</li>
+          <li>Export dostupný v aplikácii môže vytvoriť JSON, CSV alebo ZIP s vybranými dokumentmi.</li>
+          <li>Aplikácia zatiaľ nemá automatickú retenčnú politiku. Dokument zostáva uložený, kým ho používateľ alebo správca nezmaže.</li>
+          <li>Externé zálohy servera, snapshoty, mailserver a AI provideri môžu mať vlastné retenčné pravidlá mimo kontroly aplikácie Muninn.</li>
+        </ul>
+
+        <h2>GDPR kontext</h2>
+        <p>
+          GDPR sa podľa čl. 2 ods. 2 písm. c) nevzťahuje na spracovanie osobných údajov fyzickou osobou
+          pri čisto osobnej alebo domácej činnosti. Túto výnimku treba vykladať úzko. Ak spracovanie presiahne
+          osobný alebo rodinný kontext, napríklad smerom ku klientom, verejnosti, zamestnancom alebo podnikaniu,
+          môže sa naň GDPR vzťahovať naplno.
+        </p>
+
+        <h2>Zodpovednosť a obmedzenia</h2>
+        <ul>
+          <li>Za zákonnosť používania konkrétnej inštancie a konkrétnych dokumentov zodpovedá osoba, ktorá inštanciu prevádzkuje.</li>
+          <li>AI extrakcia môže byť nepresná alebo chybná. Výsledky treba overiť pred platbou, právnym úkonom, úradným podaním alebo iným dôležitým použitím.</li>
+          <li>Muninn je poskytovaný „tak ako je“ (as-is), bez záruky, v súlade s licenciou Apache 2.0.</li>
+          <li>Autor softvéru nezodpovedá za rozhodnutia AI providerov, výpadky služieb, stratu dát, nesprávnu konfiguráciu servera alebo nesprávne použitie aplikácie.</li>
+        </ul>
+
+        <h2>Referenčné zdroje</h2>
+        <ul>
+          <li><a href="https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02016R0679-20160504" target="_blank" rel="noreferrer">GDPR, čl. 2 a čl. 4 - EUR-Lex</a></li>
+          <li><a href="https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_201903_video_devices_en_0.pdf" target="_blank" rel="noreferrer">EDPB výklad domácej výnimky</a></li>
+          <li><a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noreferrer">OpenAI API data controls</a></li>
+          <li><a href="https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data" target="_blank" rel="noreferrer">Anthropic commercial/API data retention</a></li>
+        </ul>
+      </article>
+
+      <article data-lang-panel="en">
+        <h1>Privacy Notice and AI Processing</h1>
+        <p class="updated">Last updated: July 18, 2026</p>
+        <p>
+          This document describes how this Muninn instance handles documents and personal data. It is written
+          for self-hosted personal or family use. It is not formal legal advice and it is not a complete GDPR
+          policy for commercial deployment.
+        </p>
+
+        <div class="note warning">
+          If Muninn is used for clients, employees, external companies, or as a paid service, this notice is not
+          enough. That mode requires a separate assessment of the controller, lawful basis, processors, contracts
+          with AI providers, retention rules, and any transfers to third countries.
+        </div>
+
+        <h2>Who Determines the Processing</h2>
+        <p>
+          In a personal deployment, the person operating this Muninn instance determines the purpose and means of
+          processing. The software author does not have access to the archive, documents, database, credentials,
+          or settings of a specific instance.
+        </p>
+
+        <h2>What Is Processed</h2>
+        <ul>
+          <li>Account data: username, password hash, salt, role, creation time, last login, and consent timestamp.</li>
+          <li>Session data: session token, CSRF secret, creation and expiry time, last seen time, user-agent, and IP address.</li>
+          <li>Uploaded documents: original file, filename, size, MIME type, file hash, upload source, and storage path.</li>
+          <li>Extracted metadata: company or person, document type, date, expiration date, amount, currency, summary, full text, AI evidence, and processing status.</li>
+          <li>AI response and technical data: raw model response, provider, model, token counts where available, estimated cost, and error messages.</li>
+          <li>Audit and operational data: audit timeline, ingest jobs, failures, duplicate warnings, and expiration alerts.</li>
+          <li>Settings: watch folders, mail/IMAP configuration, Telegram configuration, and AI provider mode.</li>
+        </ul>
+        <p>
+          Documents may contain sensitive or special-category data, such as health, family, identity document,
+          financial, or child-related information. Muninn does not legally classify those categories automatically;
+          it processes them technically like other documents.
+        </p>
+
+        <h2>Where Content Is Sent</h2>
+        <p>
+          AI extraction runs through one configured provider. Muninn isolates processing so the AI tool receives
+          access only to the specific file being processed, not to the whole archive or watch folder.
+        </p>
+        <ul>
+          <li><strong>Claude CLI</strong> - document content is sent to Anthropic through the Claude account or subscription logged in on the machine.</li>
+          <li><strong>Codex CLI</strong> - document content is sent to OpenAI through the Codex/ChatGPT account or CLI configuration logged in on the machine.</li>
+          <li><strong>Anthropic API key</strong> - document content is sent through the Anthropic API when API mode is used as fallback or explicit choice.</li>
+        </ul>
+        <p>
+          When content is sent to an AI provider, it may leave the local server and be processed by third-party
+          infrastructure. Retention and model-training use depend on the provider, account type, and account
+          settings. OpenAI states that API inputs and outputs are not used for training by default and that abuse
+          monitoring logs may be retained for up to 30 days. Anthropic states that for API/commercial products,
+          inputs and outputs are automatically deleted from its backend within 30 days, subject to exceptions for
+          legal reasons, safety, longer-retention features, or separate agreements. Consumer Claude/Codex modes
+          may be governed by different account settings, especially training and history controls.
+        </p>
+
+        <h2>Where Data Is Stored</h2>
+        <p>
+          Archived files, the SQLite database, extracted full text, raw AI responses, audit events, and settings
+          remain local on the server running Muninn. They are not sent to an external database operated by the
+          software author.
+        </p>
+        <p>
+          Sensitive configuration values such as the mail password, Telegram bot token, or Anthropic API key are
+          stored encrypted in the database using <code>MUNINN_ENCRYPTION_KEY</code>. The strength of this protection
+          also depends on the security of the server, <code>.env</code> files, backups, and host access.
+        </p>
+
+        <h2>Mail, Telegram, and Watch Folders</h2>
+        <ul>
+          <li>If mail ingestion is enabled, attachments and possibly message body content are processed from the configured IMAP mailbox. The mail server may have its own logs, backups, and retention rules.</li>
+          <li>If Telegram alerts are enabled, Muninn sends expiration alerts to Telegram. The alert text may include the company/person name, document type, and expiration date.</li>
+          <li>Watch folders are local or mounted folders monitored by the app. A file placed in a watch folder may be processed automatically.</li>
+        </ul>
+
+        <h2>Control, Export, and Deletion</h2>
+        <ul>
+          <li>A document can be viewed, edited, and deleted in the app.</li>
+          <li>When a document is deleted, Muninn removes both the database record and the stored file if the file is still at the expected path.</li>
+          <li>Bulk deletion follows the same principle: files are removed first, then database records are removed.</li>
+          <li>The export function can create JSON, CSV, or ZIP exports of selected documents.</li>
+          <li>The app currently has no automatic retention policy. A document remains stored until a user or administrator deletes it.</li>
+          <li>External server backups, snapshots, the mail server, and AI providers may have their own retention rules outside Muninn's control.</li>
+        </ul>
+
+        <h2>GDPR Context</h2>
+        <p>
+          Under Article 2(2)(c), GDPR does not apply to processing of personal data by a natural person in the
+          course of a purely personal or household activity. This exemption must be interpreted narrowly. If the
+          processing extends beyond personal or family use, for example to clients, the public, employees, or
+          business activity, GDPR may apply in full.
+        </p>
+
+        <h2>Responsibility and Limits</h2>
+        <ul>
+          <li>The person operating the instance is responsible for the lawfulness of using that instance and processing the specific documents.</li>
+          <li>AI extraction may be inaccurate or wrong. Results should be checked before payment, legal action, official filing, or other important use.</li>
+          <li>Muninn is provided “as is”, without warranty, under the Apache 2.0 license.</li>
+          <li>The software author is not responsible for AI provider decisions, service outages, data loss, server misconfiguration, or misuse of the app.</li>
+        </ul>
+
+        <h2>Reference Sources</h2>
+        <ul>
+          <li><a href="https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02016R0679-20160504" target="_blank" rel="noreferrer">GDPR, Articles 2 and 4 - EUR-Lex</a></li>
+          <li><a href="https://www.edpb.europa.eu/system/files/documents/files/file1/edpb_guidelines_201903_video_devices_en_0.pdf" target="_blank" rel="noreferrer">EDPB guidance on the household exemption</a></li>
+          <li><a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noreferrer">OpenAI API data controls</a></li>
+          <li><a href="https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data" target="_blank" rel="noreferrer">Anthropic commercial/API data retention</a></li>
+        </ul>
+      </article>
     </div>
+
+    <script>
+      const storageKey = "muninn-language";
+      const select = document.getElementById("language");
+      const panels = document.querySelectorAll("[data-lang-panel]");
+
+      function setLanguage(language) {
+        const next = language === "en" ? "en" : "sk";
+        document.documentElement.lang = next;
+        select.value = next;
+        localStorage.setItem(storageKey, next);
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.langPanel === next);
+        });
+      }
+
+      select.addEventListener("change", (event) => setLanguage(event.target.value));
+      const storedLanguage = localStorage.getItem(storageKey);
+      setLanguage(storedLanguage || "sk");
+    </script>
   </body>
 </html>

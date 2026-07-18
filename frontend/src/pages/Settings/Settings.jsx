@@ -3,6 +3,7 @@ import api from "../../api/client";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import PageHeader from "../../components/ui/PageHeader";
+import { useI18n } from "../../i18n.jsx";
 
 const inputStyle = {
   padding: "10px 12px",
@@ -14,6 +15,7 @@ const inputStyle = {
 };
 
 export default function Settings() {
+  const { t } = useI18n();
   const [folders, setFolders] = useState([]);
   const [newFolder, setNewFolder] = useState("");
   const [folderError, setFolderError] = useState(null);
@@ -90,7 +92,7 @@ export default function Settings() {
       const res = await api.post("/settings/ai-provider/test");
       setTestResult(`OK: ${res.data.provider} (${res.data.model})`);
     } catch (err) {
-      setTestResult(`Chyba: ${err.response?.data?.detail}`);
+      setTestResult(t("settings.testError", { detail: err.response?.data?.detail || t("common.unknown") }));
     }
   }
 
@@ -111,66 +113,66 @@ export default function Settings() {
       const res = await api.post("/settings/telegram/test");
       setTelegramTestResult(`OK: ${res.data.message}`);
     } catch (err) {
-      setTelegramTestResult(`Chyba: ${err.response?.data?.detail}`);
+      setTelegramTestResult(t("settings.testError", { detail: err.response?.data?.detail || t("common.unknown") }));
     }
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <PageHeader eyebrow="Konfiguracia" title="Nastavenia" />
+      <PageHeader eyebrow={t("settings.eyebrow")} title={t("settings.title")} />
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>Sledovane priecinky</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.watchFolders")}</h3>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, marginBottom: 12 }}>
           {folders.map((f) => (
             <li key={f} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{f}</span>
               <button className="btn btn-ghost" onClick={() => removeFolder(f)}>
-                Odstranit
+                {t("common.remove")}
               </button>
             </li>
           ))}
-          {folders.length === 0 && <li style={{ color: "var(--color-text-secondary)" }}>Ziadne priecinky</li>}
+          {folders.length === 0 && <li style={{ color: "var(--color-text-secondary)" }}>{t("settings.noFolders")}</li>}
         </ul>
         <div style={{ display: "flex", gap: 8 }}>
-          <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} placeholder="/cesta/k/priecinku" style={inputStyle} />
-          <Button onClick={addFolder}>Pridat</Button>
+          <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} placeholder={t("settings.folderPlaceholder")} style={inputStyle} />
+          <Button onClick={addFolder}>{t("settings.add")}</Button>
         </div>
         {folderError && <p style={{ color: "var(--color-warning)", marginTop: 8 }}>{folderError}</p>}
       </Card>
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>Mail (volitelne)</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.mail")}</h3>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <input type="checkbox" checked={!!mail.enabled} onChange={(e) => setMail({ ...mail, enabled: e.target.checked })} />
-          Zapnut mail ingestion
+          {t("settings.enableMail")}
         </label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <input placeholder="IMAP host" value={mail.host || ""} onChange={(e) => setMail({ ...mail, host: e.target.value })} style={inputStyle} />
+          <input placeholder={t("settings.imapHost")} value={mail.host || ""} onChange={(e) => setMail({ ...mail, host: e.target.value })} style={inputStyle} />
           <input
-            placeholder="Port"
+            placeholder={t("settings.port")}
             type="number"
             value={mail.port || 993}
             onChange={(e) => setMail({ ...mail, port: Number(e.target.value) })}
             style={inputStyle}
           />
           <input
-            placeholder="Pouzivatelske meno"
+            placeholder={t("settings.username")}
             value={mail.username || ""}
             onChange={(e) => setMail({ ...mail, username: e.target.value })}
             style={inputStyle}
           />
-          <input placeholder="Heslo" type="password" onChange={(e) => setMail({ ...mail, password: e.target.value })} style={inputStyle} />
+          <input placeholder={t("settings.password")} type="password" onChange={(e) => setMail({ ...mail, password: e.target.value })} style={inputStyle} />
         </div>
         <Button onClick={saveMail} style={{ marginTop: 12 }}>
-          Ulozit
+          {t("common.save")}
         </Button>
       </Card>
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>Telegram upozornenia</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.telegram")}</h3>
         <p style={{ color: "var(--color-text-secondary)", fontSize: 13, marginBottom: 12 }}>
-          Ked sa blizi platnost dokumentu (poistka, zmluva, doklad), poslem sprava na Telegram.
+          {t("settings.telegramDescription")}
         </p>
         <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <input
@@ -178,24 +180,24 @@ export default function Settings() {
             checked={!!telegram.enabled}
             onChange={(e) => setTelegram({ ...telegram, enabled: e.target.checked })}
           />
-          Zapnut Telegram upozornenia
+          {t("settings.enableTelegram")}
         </label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <input
-            placeholder="Bot token (od @BotFather)"
+            placeholder={t("settings.botToken")}
             type="password"
             value={telegramBotToken}
             onChange={(e) => setTelegramBotToken(e.target.value)}
             style={inputStyle}
           />
           <input
-            placeholder="Chat ID"
+            placeholder={t("settings.chatId")}
             value={telegram.chat_id || ""}
             onChange={(e) => setTelegram({ ...telegram, chat_id: e.target.value })}
             style={inputStyle}
           />
           <input
-            placeholder="Kolko dni vopred upozornit"
+            placeholder={t("settings.notifyDays")}
             type="number"
             value={telegram.notify_days_before ?? 30}
             onChange={(e) => setTelegram({ ...telegram, notify_days_before: Number(e.target.value) })}
@@ -204,83 +206,83 @@ export default function Settings() {
         </div>
         {telegram.configured && (
           <p style={{ marginTop: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
-            Bot token je ulozeny (zasifrovany). Nechaj pole prazdne, ak ho nechces menit.
+            {t("settings.tokenStored")}
           </p>
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <Button onClick={saveTelegram}>Ulozit</Button>
+          <Button onClick={saveTelegram}>{t("common.save")}</Button>
           <Button variant="secondary" onClick={testTelegram}>
-            Otestovat
+            {t("settings.test")}
           </Button>
         </div>
         {telegramTestResult && <p style={{ marginTop: 8 }}>{telegramTestResult}</p>}
       </Card>
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>AI engine</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.aiEngine")}</h3>
         <select value={aiMode} onChange={(e) => setAiMode(e.target.value)} style={inputStyle}>
-          <option value="auto">Automaticky (claude/codex CLI, potom API kluc)</option>
-          <option value="claude_cli">Len Claude CLI</option>
-          <option value="codex_cli">Len Codex CLI</option>
-          <option value="anthropic_api">Len Anthropic API kluc</option>
+          <option value="auto">{t("settings.modeAuto")}</option>
+          <option value="claude_cli">{t("settings.modeClaude")}</option>
+          <option value="codex_cli">{t("settings.modeCodex")}</option>
+          <option value="anthropic_api">{t("settings.modeAnthropic")}</option>
         </select>
         <input
-          placeholder="Anthropic API kluc (ak treba)"
+          placeholder={t("settings.apiKey")}
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           style={{ ...inputStyle, marginTop: 12 }}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <Button onClick={saveAiProvider}>Ulozit</Button>
+          <Button onClick={saveAiProvider}>{t("common.save")}</Button>
           <Button variant="secondary" onClick={testConnection}>
-            Otestovat pripojenie
+            {t("settings.testConnection")}
           </Button>
         </div>
         {testResult && <p style={{ marginTop: 8 }}>{testResult}</p>}
       </Card>
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>Spotreba AI</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.aiUsage")}</h3>
         {!usage ? (
-          <p style={{ color: "var(--color-text-secondary)" }}>Nacitavam...</p>
+          <p style={{ color: "var(--color-text-secondary)" }}>{t("common.loading")}</p>
         ) : usage.total.documents === 0 ? (
-          <p style={{ color: "var(--color-text-secondary)" }}>Zatial ziadne spracovane dokumenty</p>
+          <p style={{ color: "var(--color-text-secondary)" }}>{t("settings.noProcessed")}</p>
         ) : (
           <>
             <div className="settings-metrics">
               <div>
-                <div className="eyebrow">Spracovanych dokumentov</div>
+                <div className="eyebrow">{t("settings.processedDocuments")}</div>
                 <div style={{ fontSize: 20 }}>{usage.total.documents}</div>
               </div>
               <div>
-                <div className="eyebrow">API/Claude token naklady</div>
+                <div className="eyebrow">{t("settings.tokenCosts")}</div>
                 <div style={{ fontSize: 20 }}>${usage.total.cost_usd.toFixed(4)}</div>
               </div>
               <div>
-                <div className="eyebrow">Merane tokeny in/out</div>
+                <div className="eyebrow">{t("settings.measuredTokens")}</div>
                 <div style={{ fontSize: 20 }}>
                   {usage.total.input_tokens.toLocaleString()} / {usage.total.output_tokens.toLocaleString()}
                 </div>
               </div>
               <div>
-                <div className="eyebrow">CLI volania</div>
+                <div className="eyebrow">{t("settings.cliCalls")}</div>
                 <div style={{ fontSize: 20 }}>{usage.metering?.cli_documents ?? 0}</div>
               </div>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ textAlign: "left", color: "var(--color-text-secondary)" }}>
-                  <th style={{ padding: "4px 8px" }}>Provider</th>
-                  <th style={{ padding: "4px 8px" }}>Dokumentov</th>
-                  <th style={{ padding: "4px 8px" }}>Naklady</th>
-                  <th style={{ padding: "4px 8px" }}>Tokeny in/out</th>
+                  <th style={{ padding: "4px 8px" }}>{t("settings.provider")}</th>
+                  <th style={{ padding: "4px 8px" }}>{t("settings.documents")}</th>
+                  <th style={{ padding: "4px 8px" }}>{t("settings.costs")}</th>
+                  <th style={{ padding: "4px 8px" }}>{t("settings.tokens")}</th>
                 </tr>
               </thead>
               <tbody>
                 {usage.by_provider.map((row) => (
-                  <tr key={row.ai_provider || "neznamy"}>
-                    <td style={{ padding: "4px 8px" }}>{row.ai_provider || "neznamy"}</td>
+                  <tr key={row.ai_provider || "unknown"}>
+                    <td style={{ padding: "4px 8px" }}>{row.ai_provider || t("common.unknown")}</td>
                     <td style={{ padding: "4px 8px" }}>{row.documents}</td>
                     <td style={{ padding: "4px 8px" }}>${row.cost_usd.toFixed(4)}</td>
                     <td style={{ padding: "4px 8px" }}>
@@ -298,55 +300,55 @@ export default function Settings() {
       </Card>
 
       <Card>
-        <h3 style={{ marginBottom: 12 }}>Technicky stav</h3>
+        <h3 style={{ marginBottom: 12 }}>{t("settings.technicalStatus")}</h3>
         {!diagnostics ? (
-          <p style={{ color: "var(--color-text-secondary)" }}>Nacitavam...</p>
+          <p style={{ color: "var(--color-text-secondary)" }}>{t("common.loading")}</p>
         ) : (
           <>
             <div className="settings-metrics">
               <div>
-                <div className="eyebrow">AI rezim</div>
+                <div className="eyebrow">{t("settings.aiMode")}</div>
                 <div>{diagnostics.ai_mode}</div>
               </div>
               <div>
                 <div className="eyebrow">Claude CLI</div>
                 <div style={{ color: diagnostics.cli.claude.available ? "var(--color-success)" : "var(--color-warning)" }}>
-                  {diagnostics.cli.claude.available ? "dostupny" : "chyba"}
+                  {diagnostics.cli.claude.available ? t("settings.available") : t("settings.missing")}
                 </div>
               </div>
               <div>
                 <div className="eyebrow">Codex CLI</div>
                 <div style={{ color: diagnostics.cli.codex.available ? "var(--color-success)" : "var(--color-warning)" }}>
-                  {diagnostics.cli.codex.available ? "dostupny" : "chyba"}
+                  {diagnostics.cli.codex.available ? t("settings.available") : t("settings.missing")}
                 </div>
               </div>
               <div>
-                <div className="eyebrow">Mail UID / failed</div>
+                <div className="eyebrow">{t("settings.mailUidFailed")}</div>
                 <div>{diagnostics.mail.last_uid} / {diagnostics.mail.failed_uid_count}</div>
               </div>
             </div>
             <div style={{ marginTop: 12, color: "var(--color-text-secondary)", fontSize: 13 }}>
-              Provider chain: {diagnostics.provider_chain.map((p) => p.name).join(" -> ") || "-"}
+              {t("settings.providerChain")}: {diagnostics.provider_chain.map((p) => p.name).join(" -> ") || "-"}
             </div>
             {diagnostics.documents.recent_failed.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>Posledne chyby</div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>{t("settings.recentErrors")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {diagnostics.documents.recent_failed.map((row) => (
                     <div key={row.id} className="diagnostic-row">
                       <strong>#{row.id} {row.original_filename}</strong>
-                      <span>{row.ai_provider || "provider?"}: {row.error_message || "bez detailu"}</span>
+                      <span>{row.ai_provider || t("common.providerUnknown")}: {row.error_message || t("common.noDetail")}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
             {diagnostics.documents.recent_failed.length === 0 && (
-              <p style={{ marginTop: 12, color: "var(--color-text-secondary)" }}>Ziadne failed dokumenty v aktivnej DB.</p>
+              <p style={{ marginTop: 12, color: "var(--color-text-secondary)" }}>{t("settings.noFailed")}</p>
             )}
             {diagnostics.jobs?.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <div className="eyebrow" style={{ marginBottom: 8 }}>Posledne joby</div>
+                <div className="eyebrow" style={{ marginBottom: 8 }}>{t("settings.recentJobs")}</div>
                 <div className="job-log-list">
                   {diagnostics.jobs.map((job) => (
                     <div key={job.id} className="job-log-row">
@@ -359,7 +361,7 @@ export default function Settings() {
                       </div>
                       {job.status === "failed" && job.document_id && (
                         <Button variant="secondary" onClick={() => retryFailedDocument(job.document_id)}>
-                          Retry
+                          {t("common.retry")}
                         </Button>
                       )}
                     </div>
@@ -368,7 +370,7 @@ export default function Settings() {
               </div>
             )}
             <Button variant="secondary" onClick={refreshDiagnostics} style={{ marginTop: 12 }}>
-              Obnovit stav
+              {t("settings.refreshStatus")}
             </Button>
           </>
         )}
@@ -376,7 +378,7 @@ export default function Settings() {
 
       <p style={{ fontSize: 12, color: "var(--color-text-secondary)", textAlign: "center" }}>
         <a href="/ochrana-udajov.html" target="_blank" rel="noreferrer">
-          Ochrana udajov a AI spracovanie
+          {t("settings.privacyLink")}
         </a>
       </p>
     </div>

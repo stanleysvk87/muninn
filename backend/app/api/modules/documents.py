@@ -58,6 +58,18 @@ def _download_mime_type(path: Path, stored_mime_type: str | None) -> str:
     return EXTENSION_MIME_TYPES.get(path.suffix.lower()) or stored_mime_type or "application/octet-stream"
 
 
+def _delete_stored_file(stored_path: str) -> None:
+    path = Path(stored_path)
+    if not path.exists():
+        return
+    if not path.is_file():
+        raise HTTPException(status_code=409, detail="Ulozena cesta nie je subor; odmietam ju zmazat automaticky")
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Nepodarilo sa zmazat subor z disku: {exc}") from exc
+
+
 def _saved_view_clauses(saved_view: str | None) -> tuple[list[str], list]:
     if not saved_view:
         return [], []
@@ -166,6 +178,9 @@ def get_facets():
     failed_count = execute(
         "SELECT COUNT(*) AS count FROM documents WHERE status = 'failed'"
     ).fetchone()["count"]
+    pending_count = execute(
+        "SELECT COUNT(*) AS count FROM documents WHERE status = 'pending'"
+    ).fetchone()["count"]
     review_counts = execute(
         """SELECT review_status, COUNT(*) AS count FROM documents
            GROUP BY review_status ORDER BY count DESC"""
@@ -178,6 +193,7 @@ def get_facets():
         "correspondents": [_row_to_dict(r) for r in correspondents],
         "doc_types": [_row_to_dict(r) for r in doc_types],
         "failed_count": failed_count,
+        "pending_count": pending_count,
         "review_counts": [_row_to_dict(r) for r in review_counts],
         "duplicate_count": duplicate_count,
     }
@@ -466,16 +482,16 @@ def retry_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
-    if row["status"] != "failed":
-        raise HTTPException(status_code=409, detail="Retry je dostupny len pre failed dokumenty")
+    if row["status"] not in ("failed", "pending"):
+        raise HTTPException(status_code=409, detail="Retry je dostupny len pre failed alebo pending dokumenty")
     path = Path(row["stored_path"])
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Povodny failed subor sa na disku nenasiel")
+        raise HTTPException(status_code=404, detail="Povodny subor sa na disku nenasiel")
 
-    add_document_event(document_id, "retry_started", "Spusteny manualny retry failed dokumentu", actor="user")
-    from ...ingest.pipeline import process
+    add_document_event(document_id, "retry_started", "Spusteny manualny retry dokumentu", actor="user")
+    from ...ingest.pipeline import reprocess_document
 
-    result = process(path, source="retry", source_detail=f"retry_of:{document_id}")
+    result = reprocess_document(document_id)
     add_document_event(
         document_id,
         "retry_finished",
@@ -492,6 +508,9 @@ def bulk_delete_documents(ids: str):
     if not id_list:
         raise HTTPException(status_code=422, detail="Ziadne id na zmazanie")
     placeholders = ",".join("?" * len(id_list))
+    rows = execute(f"SELECT stored_path FROM documents WHERE id IN ({placeholders})", tuple(id_list)).fetchall()
+    for row in rows:
+        _delete_stored_file(row["stored_path"])
     execute(f"DELETE FROM documents WHERE id IN ({placeholders})", tuple(id_list))
     return {"deleted": len(id_list)}
 
@@ -501,5 +520,6 @@ def delete_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+    _delete_stored_file(row["stored_path"])
     execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return {"ok": True}

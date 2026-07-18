@@ -2,6 +2,7 @@ import { useState } from "react";
 import api from "../../api/client";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
+import { useI18n } from "../../i18n.jsx";
 
 const inputStyle = {
   padding: "10px 12px",
@@ -12,6 +13,7 @@ const inputStyle = {
 };
 
 export default function Login({ onLoggedIn }) {
+  const { language, setLanguage, t } = useI18n();
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -29,7 +31,7 @@ export default function Login({ onLoggedIn }) {
       const res = await api.post(path, payload);
       onLoggedIn(res.data);
     } catch (err) {
-      setError(err.response?.data?.detail || "Prihlasenie zlyhalo");
+      setError(err.response?.data?.detail || t("login.failed"));
     } finally {
       setBusy(false);
     }
@@ -38,13 +40,24 @@ export default function Login({ onLoggedIn }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <Card style={{ width: 360 }}>
-        <div className="eyebrow">Muninn</div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <div className="eyebrow">Muninn</div>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            aria-label={t("common.language")}
+            style={{ ...inputStyle, width: "auto", padding: "6px 8px", fontSize: 12 }}
+          >
+            <option value="sk">SK</option>
+            <option value="en">EN</option>
+          </select>
+        </div>
         <h1 style={{ fontSize: 22, marginTop: 8, marginBottom: 20 }}>
-          {mode === "login" ? "Prihlasenie" : "Vytvorenie admin uctu"}
+          {mode === "login" ? t("login.title") : t("login.bootstrapTitle")}
         </h1>
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input
-            placeholder="Pouzivatelske meno"
+            placeholder={t("login.username")}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
@@ -52,7 +65,7 @@ export default function Login({ onLoggedIn }) {
           />
           <input
             type="password"
-            placeholder="Heslo"
+            placeholder={t("login.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -68,11 +81,9 @@ export default function Login({ onLoggedIn }) {
                 style={{ marginTop: 2 }}
               />
               <span>
-                Suhlasim so spracovanim mojich dokumentov vratane odosielania obsahu AI poskytovatelom
-                (Claude/Codex/Anthropic) na extrakciu a beriem na vedomie zrieknutie sa zodpovednosti
-                (softver "tak ako je", spracovanie tretou stranou mimo kontroly prevadzkovatela). Viac v{" "}
+                {t("login.consentPrefix")}{" "}
                 <a href="/ochrana-udajov.html" target="_blank" rel="noreferrer">
-                  Ochrane udajov
+                  {t("login.privacy")}
                 </a>
                 .
               </span>
@@ -80,7 +91,7 @@ export default function Login({ onLoggedIn }) {
           )}
           {error && <div style={{ color: "var(--color-warning)", fontSize: 13 }}>{error}</div>}
           <Button type="submit" disabled={busy}>
-            {mode === "login" ? "Prihlasit sa" : "Vytvorit ucet"}
+            {mode === "login" ? t("login.submit") : t("login.createAccount")}
           </Button>
         </form>
         <button
@@ -88,7 +99,7 @@ export default function Login({ onLoggedIn }) {
           style={{ marginTop: 12, fontSize: 12 }}
           onClick={() => setMode(mode === "login" ? "bootstrap" : "login")}
         >
-          {mode === "login" ? "Prve spustenie? Vytvorit admin ucet" : "Uz mam ucet"}
+          {mode === "login" ? t("login.firstRun") : t("login.haveAccount")}
         </button>
       </Card>
     </div>

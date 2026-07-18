@@ -5,8 +5,10 @@ from pathlib import Path
 
 import anthropic
 
-from .base import ExtractionError, ExtractionResult
+from .base import ExtractionError, ExtractionResult, ProviderUnavailableError
 from .prompt import build_prompt, read_inline_text
+
+UNAVAILABLE_STATUS_CODES = {401, 403, 429, 500, 502, 503, 529}
 
 EXTRACTION_SCHEMA = {
     "type": "object",
@@ -83,7 +85,13 @@ class AnthropicAPIProvider:
                     }
                 ],
             )
+        except anthropic.APIConnectionError as exc:
+            # No HTTP status at all -- network/DNS/timeout, clearly an
+            # availability problem rather than anything to do with this document.
+            raise ProviderUnavailableError(f"Anthropic API nedostupne: {exc}") from exc
         except anthropic.APIStatusError as exc:
+            if exc.status_code in UNAVAILABLE_STATUS_CODES:
+                raise ProviderUnavailableError(f"Anthropic API zlyhalo ({exc.status_code}): {exc}") from exc
             raise ExtractionError(f"Anthropic API zlyhalo: {exc}") from exc
 
         if response.stop_reason == "refusal":

@@ -21,6 +21,16 @@ class ExtractionError(Exception):
     pass
 
 
+class ProviderUnavailableError(ExtractionError):
+    """Raised when a provider could not even attempt extraction -- auth
+    failure, rate limit, timeout, missing binary/runtime -- as opposed to a
+    content-level failure (bad JSON, garbled response, unreadable document)
+    where retrying the same document later won't help. The ingest pipeline
+    uses this distinction to decide whether a document should be queued for
+    automatic retry once a provider comes back, instead of marked failed."""
+    pass
+
+
 class AIProvider(Protocol):
     name: str
     model: str

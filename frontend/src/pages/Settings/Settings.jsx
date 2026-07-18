@@ -373,6 +373,12 @@ export default function Settings() {
           </>
         )}
       </Card>
+
+      <p style={{ fontSize: 12, color: "var(--color-text-secondary)", textAlign: "center" }}>
+        <a href="/ochrana-udajov.html" target="_blank" rel="noreferrer">
+          Ochrana udajov a AI spracovanie
+        </a>
+      </p>
     </div>
   );
 }

@@ -99,6 +99,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for column, coltype in _DOCUMENTS_COLUMNS.items():
         if column not in existing:
             conn.execute(f"ALTER TABLE documents ADD COLUMN {column} {coltype}")
+
+    users_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+    if "consented_at" not in users_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN consented_at TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_expiry_date ON documents(expiry_date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_review_status ON documents(review_status)")
 

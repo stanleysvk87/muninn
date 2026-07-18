@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_salt   TEXT NOT NULL,
     role            TEXT NOT NULL DEFAULT 'admin',
     created_at      TEXT NOT NULL,
-    last_login_at   TEXT
+    last_login_at   TEXT,
+    consented_at    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

@@ -15,6 +15,7 @@ export default function Login({ onLoggedIn }) {
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -24,7 +25,8 @@ export default function Login({ onLoggedIn }) {
     setError(null);
     try {
       const path = mode === "login" ? "/auth/login" : "/auth/bootstrap";
-      const res = await api.post(path, { username, password });
+      const payload = mode === "login" ? { username, password } : { username, password, consent };
+      const res = await api.post(path, payload);
       onLoggedIn(res.data);
     } catch (err) {
       setError(err.response?.data?.detail || "Prihlasenie zlyhalo");
@@ -56,6 +58,25 @@ export default function Login({ onLoggedIn }) {
             required
             style={inputStyle}
           />
+          {mode === "bootstrap" && (
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                Suhlasim so spracovanim mojich dokumentov vratane odosielania obsahu AI poskytovatelom
+                (Claude/Codex/Anthropic) na extrakciu. Viac v{" "}
+                <a href="/ochrana-udajov.html" target="_blank" rel="noreferrer">
+                  Ochrane udajov
+                </a>
+                .
+              </span>
+            </label>
+          )}
           {error && <div style={{ color: "var(--color-warning)", fontSize: 13 }}>{error}</div>}
           <Button type="submit" disabled={busy}>
             {mode === "login" ? "Prihlasit sa" : "Vytvorit ucet"}

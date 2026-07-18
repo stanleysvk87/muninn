@@ -46,7 +46,12 @@ def bootstrap(payload: dict, response: Response, request: Request):
     password = payload.get("password") or ""
     if not username or len(password) < 8:
         raise HTTPException(status_code=422, detail="Používateľské meno a heslo (min. 8 znakov) sú povinné")
-    user_id = create_user(username, password)
+    if not payload.get("consent"):
+        raise HTTPException(
+            status_code=422,
+            detail="Musíš súhlasiť so spracovaním dokumentov (vrátane odosielania obsahu AI poskytovateľom)",
+        )
+    user_id = create_user(username, password, consented=True)
     token, csrf_secret, _ = create_session(user_id, request.headers.get("user-agent", ""), request.client.host if request.client else "")
     _set_session_cookies(response, token, csrf_secret)
     return {"username": username}

@@ -30,11 +30,13 @@ def users_exist() -> bool:
     return row["c"] > 0
 
 
-def create_user(username: str, password: str, role: str = "admin") -> int:
+def create_user(username: str, password: str, role: str = "admin", consented: bool = False) -> int:
     password_hash, password_salt = hash_password(password)
+    now = _now_iso()
     cur = execute(
-        "INSERT INTO users (username, password_hash, password_salt, role, created_at) VALUES (?, ?, ?, ?, ?)",
-        (username, password_hash, password_salt, role, _now_iso()),
+        """INSERT INTO users (username, password_hash, password_salt, role, created_at, consented_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (username, password_hash, password_salt, role, now, now if consented else None),
     )
     return cur.lastrowid
 

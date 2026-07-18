@@ -6,7 +6,7 @@ import PageHeader from "../../components/ui/PageHeader";
 import { useI18n } from "../../i18n.jsx";
 
 export default function Upload() {
-  const { documentUnit, fileUnit, pageUnit, t } = useI18n();
+  const { apiErrorMessage, documentUnit, fileUnit, pageUnit, t } = useI18n();
   const [staged, setStaged] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -51,7 +51,7 @@ export default function Upload() {
       setMessage(describeResult(res.data));
       setStaged([]);
     } catch (err) {
-      setError(err.response?.data?.detail || t("upload.failed"));
+      setError(apiErrorMessage(err, t("upload.failed")));
     } finally {
       setBusy(false);
     }
@@ -68,7 +68,7 @@ export default function Upload() {
       setMessage(describeResult(res.data, staged.length));
       setStaged([]);
     } catch (err) {
-      setError(err.response?.data?.detail || t("upload.combineFailed"));
+      setError(apiErrorMessage(err, t("upload.combineFailed")));
     } finally {
       setBusy(false);
     }
@@ -89,7 +89,7 @@ export default function Upload() {
       setMessage(t("upload.uploadedSeparate", { count: uploaded, unit: documentUnit(uploaded) }));
       setStaged([]);
     } catch (err) {
-      setError(err.response?.data?.detail || t("upload.failedAfter", { count: uploaded, unit: fileUnit(uploaded) }));
+      setError(apiErrorMessage(err, t("upload.failedAfter", { count: uploaded, unit: fileUnit(uploaded) })));
     } finally {
       setBusy(false);
     }

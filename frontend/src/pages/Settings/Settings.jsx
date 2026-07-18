@@ -15,7 +15,7 @@ const inputStyle = {
 };
 
 export default function Settings() {
-  const { t } = useI18n();
+  const { apiErrorMessage, t } = useI18n();
   const [folders, setFolders] = useState([]);
   const [newFolder, setNewFolder] = useState("");
   const [folderError, setFolderError] = useState(null);
@@ -68,7 +68,7 @@ export default function Settings() {
       setFolders(res.data.folders);
       setNewFolder("");
     } catch (err) {
-      setFolderError(err.response?.data?.detail);
+      setFolderError(apiErrorMessage(err));
     }
   }
 
@@ -92,7 +92,7 @@ export default function Settings() {
       const res = await api.post("/settings/ai-provider/test");
       setTestResult(`OK: ${res.data.provider} (${res.data.model})`);
     } catch (err) {
-      setTestResult(t("settings.testError", { detail: err.response?.data?.detail || t("common.unknown") }));
+      setTestResult(t("settings.testError", { detail: apiErrorMessage(err, t("common.unknown")) }));
     }
   }
 
@@ -101,6 +101,7 @@ export default function Settings() {
       enabled: telegram.enabled,
       chat_id: telegram.chat_id,
       notify_days_before: telegram.notify_days_before,
+      notification_language: telegram.notification_language,
       bot_token: telegramBotToken || undefined,
     });
     setTelegram(res.data);
@@ -113,7 +114,7 @@ export default function Settings() {
       const res = await api.post("/settings/telegram/test");
       setTelegramTestResult(`OK: ${res.data.message}`);
     } catch (err) {
-      setTelegramTestResult(t("settings.testError", { detail: err.response?.data?.detail || t("common.unknown") }));
+      setTelegramTestResult(t("settings.testError", { detail: apiErrorMessage(err, t("common.unknown")) }));
     }
   }
 
@@ -203,6 +204,14 @@ export default function Settings() {
             onChange={(e) => setTelegram({ ...telegram, notify_days_before: Number(e.target.value) })}
             style={inputStyle}
           />
+          <select
+            value={telegram.notification_language || "sk"}
+            onChange={(e) => setTelegram({ ...telegram, notification_language: e.target.value })}
+            style={inputStyle}
+          >
+            <option value="sk">{t("settings.notificationLanguageSk")}</option>
+            <option value="en">{t("settings.notificationLanguageEn")}</option>
+          </select>
         </div>
         {telegram.configured && (
           <p style={{ marginTop: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>

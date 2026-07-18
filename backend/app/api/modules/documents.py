@@ -5,11 +5,12 @@ import zipfile
 from datetime import date, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ...audit import add_document_event
 from ...db import execute
+from ...errors import api_error
 from ...expiry_notifier import RECURRENCE_MONTHS, _add_months
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -63,11 +64,11 @@ def _delete_stored_file(stored_path: str) -> None:
     if not path.exists():
         return
     if not path.is_file():
-        raise HTTPException(status_code=409, detail="Ulozena cesta nie je subor; odmietam ju zmazat automaticky")
+        raise api_error(409, "stored_path_not_a_file")
     try:
         path.unlink()
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Nepodarilo sa zmazat subor z disku: {exc}") from exc
+        raise api_error(500, "file_delete_failed", error=str(exc)) from exc
 
 
 def _saved_view_clauses(saved_view: str | None) -> tuple[list[str], list]:
@@ -75,11 +76,11 @@ def _saved_view_clauses(saved_view: str | None) -> tuple[list[str], list]:
         return [], []
     view = execute("SELECT query_json FROM saved_views WHERE key = ?", (saved_view,)).fetchone()
     if view is None:
-        raise HTTPException(status_code=404, detail="Saved view nenajdeny")
+        raise api_error(404, "saved_view_not_found")
     try:
         query = json.loads(view["query_json"])
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=500, detail="Saved view ma neplatnu konfiguraciu") from exc
+        raise api_error(500, "saved_view_invalid_config") from exc
 
     clauses: list[str] = []
     params: list = []
@@ -244,7 +245,7 @@ def _parse_ids(ids: str) -> list[int]:
     try:
         return [int(part) for part in ids.split(",") if part.strip()]
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Neplatny zoznam id") from exc
+        raise api_error(422, "invalid_id_list") from exc
 
 
 @router.get("/export")
@@ -291,21 +292,21 @@ def export_documents(format: str = "json", q: str | None = None, ids: str | None
             headers={"Content-Disposition": "attachment; filename=documents.zip"},
         )
 
-    raise HTTPException(status_code=400, detail="Neznamy format (pouzi json, csv alebo zip)")
+    raise api_error(400, "unknown_export_format")
 
 
 @router.get("/{document_id}")
 def get_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     return _document_payload(row)
 
 
 @router.get("/{document_id}/events")
 def get_document_events(document_id: int):
     if execute("SELECT id FROM documents WHERE id = ?", (document_id,)).fetchone() is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     rows = execute(
         """SELECT * FROM document_events
            WHERE document_id = ?
@@ -318,7 +319,7 @@ def get_document_events(document_id: int):
 @router.get("/{document_id}/duplicates")
 def get_document_duplicates(document_id: int):
     if execute("SELECT id FROM documents WHERE id = ?", (document_id,)).fetchone() is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     rows = execute(
         """SELECT dc.*, d.id AS match_id, d.original_filename, d.correspondent, d.doc_type, d.doc_date,
                   d.amount_value, d.amount_currency
@@ -338,13 +339,13 @@ def get_document_duplicates(document_id: int):
 def update_duplicate_candidate(candidate_id: int, payload: dict):
     status = payload.get("status")
     if status not in {"open", "ignored", "confirmed"}:
-        raise HTTPException(status_code=422, detail="Neplatny duplicate status")
+        raise api_error(422, "invalid_duplicate_status")
     row = execute(
         "SELECT * FROM document_duplicate_candidates WHERE id = ?",
         (candidate_id,),
     ).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Duplikatovy warning nenajdeny")
+        raise api_error(404, "duplicate_warning_not_found")
     execute(
         """UPDATE document_duplicate_candidates
            SET status = ?, updated_at = datetime('now')
@@ -365,7 +366,7 @@ def update_duplicate_candidate(candidate_id: int, payload: dict):
 def dismiss_expiry_alert(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     execute(
         "UPDATE documents SET expiry_dismissed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         (document_id,),
@@ -378,7 +379,7 @@ def dismiss_expiry_alert(document_id: int):
 def restore_expiry_alert(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     execute(
         "UPDATE documents SET expiry_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ?",
         (document_id,),
@@ -394,11 +395,11 @@ def get_document_file(document_id: int, download: bool = False):
         (document_id,),
     ).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
 
     path = Path(row["stored_path"])
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Subor sa na disku nenasiel (mozno zlyhalo spracovanie)")
+        raise api_error(404, "file_not_found_on_disk")
 
     media_type = _download_mime_type(path, row["mime_type"])
     disposition = "attachment" if download or media_type in DOWNLOAD_ONLY_MIME_TYPES else "inline"
@@ -414,7 +415,7 @@ def get_document_file(document_id: int, download: bool = False):
 def update_document(document_id: int, payload: dict):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
 
     allowed = {
         "correspondent", "doc_type", "doc_date", "expiry_date", "expiry_dismissed_at",
@@ -462,10 +463,10 @@ def update_review_status(document_id: int, payload: dict):
     review_status = payload.get("review_status")
     allowed = {"na_kontrolu", "vybavene", "zaplatit", "zamietnute", "archiv"}
     if review_status not in allowed:
-        raise HTTPException(status_code=422, detail="Neplatny review status")
+        raise api_error(422, "invalid_review_status")
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     execute(
         "UPDATE documents SET review_status = ?, updated_at = datetime('now') WHERE id = ?",
         (review_status, document_id),
@@ -484,12 +485,12 @@ def update_review_status(document_id: int, payload: dict):
 def retry_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     if row["status"] not in ("failed", "pending"):
-        raise HTTPException(status_code=409, detail="Retry je dostupny len pre failed alebo pending dokumenty")
+        raise api_error(409, "retry_not_allowed")
     path = Path(row["stored_path"])
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Povodny subor sa na disku nenasiel")
+        raise api_error(404, "original_file_not_found")
 
     add_document_event(document_id, "retry_started", "Spusteny manualny retry dokumentu", actor="user")
     from ...ingest.pipeline import reprocess_document
@@ -509,7 +510,7 @@ def retry_document(document_id: int):
 def bulk_delete_documents(ids: str):
     id_list = _parse_ids(ids)
     if not id_list:
-        raise HTTPException(status_code=422, detail="Ziadne id na zmazanie")
+        raise api_error(422, "no_ids_to_delete")
     placeholders = ",".join("?" * len(id_list))
     rows = execute(f"SELECT stored_path FROM documents WHERE id IN ({placeholders})", tuple(id_list)).fetchall()
     for row in rows:
@@ -522,7 +523,7 @@ def bulk_delete_documents(ids: str):
 def delete_document(document_id: int):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
-        raise HTTPException(status_code=404, detail="Dokument nenajdeny")
+        raise api_error(404, "document_not_found")
     _delete_stored_file(row["stored_path"])
     execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return {"ok": True}

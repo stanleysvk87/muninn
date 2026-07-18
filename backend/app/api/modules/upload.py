@@ -2,10 +2,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, UploadFile
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
+from ...errors import api_error
 from ...ingest import pipeline
 
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -16,7 +17,7 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".ti
 @router.post("")
 async def upload(file: UploadFile):
     if not file.filename:
-        raise HTTPException(status_code=422, detail="Chyba nazov suboru")
+        raise api_error(422, "invalid_filename")
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="muninn-upload-"))
     dest = tmp_dir / file.filename
@@ -55,20 +56,17 @@ def _combine_to_pdf(paths: list[Path], dest: Path) -> None:
 @router.post("/combine")
 async def upload_combine(files: list[UploadFile]):
     if len(files) < 2:
-        raise HTTPException(status_code=422, detail="Zlucenie potrebuje aspon 2 subory")
+        raise api_error(422, "merge_needs_two_files")
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="muninn-upload-combine-"))
     try:
         staged_paths = []
         for index, file in enumerate(files):
             if not file.filename:
-                raise HTTPException(status_code=422, detail="Chyba nazov suboru")
+                raise api_error(422, "invalid_filename")
             suffix = Path(file.filename).suffix.lower()
             if suffix != ".pdf" and suffix not in IMAGE_SUFFIXES:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Zlucenie podporuje len obrazky a PDF, nie {suffix or 'neznamy format'}",
-                )
+                raise api_error(422, "merge_unsupported_format", suffix=suffix or "?")
             path = tmp_dir / f"{index:03d}_{file.filename}"
             with path.open("wb") as out:
                 shutil.copyfileobj(file.file, out)
@@ -78,7 +76,7 @@ async def upload_combine(files: list[UploadFile]):
         try:
             _combine_to_pdf(staged_paths, combined_path)
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Zlucenie suborov zlyhalo: {exc}") from exc
+            raise api_error(422, "merge_failed", error=str(exc)) from exc
 
         return pipeline.process(combined_path, source="upload")
     finally:

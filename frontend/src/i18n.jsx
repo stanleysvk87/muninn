@@ -149,6 +149,31 @@ const DICTIONARIES = {
     "docType.correspondence": "Korešpondencia",
     "docType.other": "Iné",
 
+    "errors.invalid_filename": "Chýba názov súboru",
+    "errors.merge_needs_two_files": "Zlúčenie potrebuje aspoň 2 súbory",
+    "errors.merge_unsupported_format": "Zlúčenie podporuje len obrázky a PDF, nie {suffix}",
+    "errors.merge_failed": "Zlúčenie súborov zlyhalo: {error}",
+    "errors.admin_already_exists": "Admin účet už existuje",
+    "errors.username_password_required": "Používateľské meno a heslo (min. 8 znakov) sú povinné",
+    "errors.consent_required": "Musíš súhlasiť so spracovaním dokumentov (vrátane odosielania obsahu AI poskytovateľom)",
+    "errors.invalid_credentials": "Nesprávne meno alebo heslo",
+    "errors.not_authenticated": "Neprihlásený",
+    "errors.folder_invalid": "Priečinok neexistuje alebo cesta chýba",
+    "errors.stored_path_not_a_file": "Uložená cesta nie je súbor; odmietam ju zmazať automaticky",
+    "errors.file_delete_failed": "Nepodarilo sa zmazať súbor z disku: {error}",
+    "errors.saved_view_not_found": "Saved view nenájdený",
+    "errors.saved_view_invalid_config": "Saved view má neplatnú konfiguráciu",
+    "errors.invalid_id_list": "Neplatný zoznam id",
+    "errors.unknown_export_format": "Neznámy formát (použi json, csv alebo zip)",
+    "errors.document_not_found": "Dokument nenájdený",
+    "errors.invalid_duplicate_status": "Neplatný duplicate status",
+    "errors.duplicate_warning_not_found": "Duplikátový warning nenájdený",
+    "errors.file_not_found_on_disk": "Súbor sa na disku nenašiel (možno zlyhalo spracovanie)",
+    "errors.invalid_review_status": "Neplatný review status",
+    "errors.retry_not_allowed": "Retry je dostupný len pre failed alebo pending dokumenty",
+    "errors.original_file_not_found": "Pôvodný súbor sa na disku nenašiel",
+    "errors.no_ids_to_delete": "Žiadne id na zmazanie",
+
     "login.title": "Prihlásenie",
     "login.bootstrapTitle": "Vytvorenie admin účtu",
     "login.username": "Používateľské meno",
@@ -228,6 +253,8 @@ const DICTIONARIES = {
     "settings.botToken": "Bot token (od @BotFather)",
     "settings.chatId": "Chat ID",
     "settings.notifyDays": "Koľko dní vopred upozorniť",
+    "settings.notificationLanguageSk": "Notifikácie po slovensky",
+    "settings.notificationLanguageEn": "Notifikácie po anglicky",
     "settings.tokenStored": "Bot token je uložený šifrovane. Nechaj pole prázdne, ak ho nechceš meniť.",
     "settings.test": "Otestovať",
     "settings.aiEngine": "AI engine",
@@ -406,6 +433,31 @@ const DICTIONARIES = {
     "docType.correspondence": "Correspondence",
     "docType.other": "Other",
 
+    "errors.invalid_filename": "Missing file name",
+    "errors.merge_needs_two_files": "Merging needs at least 2 files",
+    "errors.merge_unsupported_format": "Merging only supports images and PDF, not {suffix}",
+    "errors.merge_failed": "Merging files failed: {error}",
+    "errors.admin_already_exists": "Admin account already exists",
+    "errors.username_password_required": "Username and password (min. 8 characters) are required",
+    "errors.consent_required": "You must consent to document processing (including sending content to AI providers)",
+    "errors.invalid_credentials": "Incorrect username or password",
+    "errors.not_authenticated": "Not signed in",
+    "errors.folder_invalid": "Folder doesn't exist or the path is invalid",
+    "errors.stored_path_not_a_file": "Stored path is not a file; refusing to delete it automatically",
+    "errors.file_delete_failed": "Failed to delete the file from disk: {error}",
+    "errors.saved_view_not_found": "Saved view not found",
+    "errors.saved_view_invalid_config": "Saved view has an invalid configuration",
+    "errors.invalid_id_list": "Invalid id list",
+    "errors.unknown_export_format": "Unknown format (use json, csv or zip)",
+    "errors.document_not_found": "Document not found",
+    "errors.invalid_duplicate_status": "Invalid duplicate status",
+    "errors.duplicate_warning_not_found": "Duplicate warning not found",
+    "errors.file_not_found_on_disk": "File not found on disk (processing may have failed)",
+    "errors.invalid_review_status": "Invalid review status",
+    "errors.retry_not_allowed": "Retry is only available for failed or pending documents",
+    "errors.original_file_not_found": "Original file not found on disk",
+    "errors.no_ids_to_delete": "No ids to delete",
+
     "login.title": "Sign in",
     "login.bootstrapTitle": "Create admin account",
     "login.username": "Username",
@@ -485,6 +537,8 @@ const DICTIONARIES = {
     "settings.botToken": "Bot token (from @BotFather)",
     "settings.chatId": "Chat ID",
     "settings.notifyDays": "How many days in advance to alert",
+    "settings.notificationLanguageSk": "Notifications in Slovak",
+    "settings.notificationLanguageEn": "Notifications in English",
     "settings.tokenStored": "The bot token is stored encrypted. Leave the field empty if you do not want to change it.",
     "settings.test": "Test",
     "settings.aiEngine": "AI engine",
@@ -643,6 +697,15 @@ export function I18nProvider({ children }) {
           return t("event.duplicate_warning", { count: metadata.candidates?.length ?? "-" });
         }
         return t(`event.${event.event_type}`) || event.message;
+      },
+      apiErrorMessage: (err, fallback) => {
+        const detail = err?.response?.data?.detail;
+        if (detail && typeof detail === "object" && detail.code) {
+          const translated = t(`errors.${detail.code}`, detail.params);
+          return translated || detail.message || fallback || "";
+        }
+        if (typeof detail === "string" && detail) return detail;
+        return fallback || "";
       },
     };
   }, [language]);

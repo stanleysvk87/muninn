@@ -17,6 +17,27 @@ CHECK_INTERVAL_SECONDS = 6 * 3600
 
 RECURRENCE_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 
+# Telegram has no per-request Accept-Language -- these background pushes
+# pick a language from the "telegram.notification_language" setting
+# (configured once in Settings) instead of the browser's i18n toggle.
+_EXPIRING_HEADER = {
+    "sk": "Muninn - blizi sa expiracia:",
+    "en": "Muninn - upcoming expiry:",
+}
+_EXPIRING_LINE = {
+    "sk": "- {correspondent} ({doc_type}): plati do {expiry_date}",
+    "en": "- {correspondent} ({doc_type}): valid until {expiry_date}",
+}
+_RECURRENCE_TEXT = {
+    "sk": "Muninn - pravidelna pripomienka ({recurrence}):\n- {correspondent} ({doc_type})",
+    "en": "Muninn - recurring reminder ({recurrence}):\n- {correspondent} ({doc_type})",
+}
+
+
+def _notification_language() -> str:
+    language = get_setting("telegram", {}).get("notification_language", "sk")
+    return language if language in _EXPIRING_HEADER else "sk"
+
 
 def _add_months(d: date, months: int) -> date:
     month_index = d.month - 1 + months
@@ -68,8 +89,14 @@ def _check_expiring(bot_token: str, chat_id: str) -> None:
     if not rows:
         return
 
-    lines = [f"- {row['correspondent']} ({row['doc_type']}): plati do {row['expiry_date']}" for row in rows]
-    text = "Muninn - blizi sa expiracia:\n" + "\n".join(lines)
+    language = _notification_language()
+    lines = [
+        _EXPIRING_LINE[language].format(
+            correspondent=row["correspondent"], doc_type=row["doc_type"], expiry_date=row["expiry_date"]
+        )
+        for row in rows
+    ]
+    text = _EXPIRING_HEADER[language] + "\n" + "\n".join(lines)
 
     ok, message = telegram.send_message(bot_token, chat_id, text)
     if not ok:
@@ -99,10 +126,10 @@ def _check_recurrences(bot_token: str, chat_id: str) -> None:
     if not rows:
         return
 
+    language = _notification_language()
     for row in rows:
-        text = (
-            f"Muninn - pravidelna pripomienka ({row['notify_recurrence']}):\n"
-            f"- {row['correspondent']} ({row['doc_type']})"
+        text = _RECURRENCE_TEXT[language].format(
+            recurrence=row["notify_recurrence"], correspondent=row["correspondent"], doc_type=row["doc_type"]
         )
         ok, message = telegram.send_message(bot_token, chat_id, text)
         if not ok:

@@ -19,7 +19,7 @@ function Highlighted({ text }) {
 }
 
 export default function Search({ expiringOnly = false, savedView = null, onOpenDocument, onNavigate }) {
-  const { docTypeLabel, localizedSummary, savedViewLabel, t } = useI18n();
+  const { apiErrorMessage, docTypeLabel, localizedSummary, savedViewLabel, t } = useI18n();
   const [q, setQ] = useState("");
   const [correspondent, setCorrespondent] = useState(null);
   const [docType, setDocType] = useState(null);
@@ -86,7 +86,7 @@ export default function Search({ expiringOnly = false, savedView = null, onOpenD
       : api.get("/documents", { params });
     request
       .then((res) => !cancelled && setRows(res.data))
-      .catch((err) => !cancelled && setError(err.response?.data?.detail || t("search.loadFailed")));
+      .catch((err) => !cancelled && setError(apiErrorMessage(err, t("search.loadFailed"))));
     return () => {
       cancelled = true;
     };

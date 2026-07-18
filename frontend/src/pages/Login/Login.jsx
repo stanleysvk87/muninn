@@ -13,7 +13,7 @@ const inputStyle = {
 };
 
 export default function Login({ onLoggedIn }) {
-  const { language, setLanguage, t } = useI18n();
+  const { apiErrorMessage, language, setLanguage, t } = useI18n();
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -31,7 +31,7 @@ export default function Login({ onLoggedIn }) {
       const res = await api.post(path, payload);
       onLoggedIn(res.data);
     } catch (err) {
-      setError(err.response?.data?.detail || t("login.failed"));
+      setError(apiErrorMessage(err, t("login.failed")));
     } finally {
       setBusy(false);
     }

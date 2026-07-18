@@ -44,7 +44,7 @@ function LabeledInput({ label, value, onChange }) {
 }
 
 export default function DocumentDetail({ documentId, onBack }) {
-  const { docTypeLabel, duplicateReason, eventMessage, localizedSummary, recurrenceLabel, reviewLabel, t } = useI18n();
+  const { apiErrorMessage, docTypeLabel, duplicateReason, eventMessage, localizedSummary, recurrenceLabel, reviewLabel, t } = useI18n();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -66,7 +66,7 @@ export default function DocumentDetail({ documentId, onBack }) {
         setEvents(eventRes.data);
         setDuplicates(duplicateRes.data);
       })
-      .catch((err) => setError(err.response?.data?.detail || t("detail.notFound")));
+      .catch((err) => setError(apiErrorMessage(err, t("detail.notFound"))));
   }, [documentId]);
 
   async function refreshSideData() {

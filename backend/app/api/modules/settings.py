@@ -8,6 +8,7 @@ from ... import crypto, telegram
 from ...ai_engine import get_provider, get_provider_chain
 from ...ai_engine.base import ExtractionError
 from ...db import execute
+from ...errors import api_error
 from ...ingest.watch_folder import sync_watch_folders
 from ...settings_store import get_setting, set_setting
 
@@ -23,7 +24,7 @@ def list_watch_folders():
 def add_watch_folder(payload: dict):
     path = payload.get("path", "")
     if not path or not Path(path).is_dir():
-        raise HTTPException(status_code=422, detail="Priecinok neexistuje alebo cesta chyba")
+        raise api_error(422, "folder_invalid")
     folders = get_setting("watch_folders", [])
     if path not in folders:
         folders.append(path)
@@ -89,6 +90,7 @@ def get_telegram_settings():
     config.setdefault("enabled", False)
     config.setdefault("chat_id", "")
     config.setdefault("notify_days_before", 30)
+    config.setdefault("notification_language", "sk")
     config["configured"] = bool(get_setting("telegram", {}).get("bot_token_encrypted"))
     return config
 
@@ -102,6 +104,8 @@ def update_telegram_settings(payload: dict):
         config["chat_id"] = telegram.sanitize_chat_id(payload["chat_id"])
     if "notify_days_before" in payload:
         config["notify_days_before"] = int(payload["notify_days_before"])
+    if payload.get("notification_language") in ("sk", "en"):
+        config["notification_language"] = payload["notification_language"]
     if payload.get("bot_token"):
         config["bot_token_encrypted"] = crypto.encrypt(telegram.sanitize_bot_token(payload["bot_token"]))
     set_setting("telegram", config)

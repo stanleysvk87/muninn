@@ -2,7 +2,10 @@ import asyncio
 import email
 import imaplib
 import logging
+import re
+import shutil
 import tempfile
+from email.header import decode_header, make_header
 from pathlib import Path
 
 from .. import crypto
@@ -94,4 +97,56 @@ def _process_message(conn: imaplib.IMAP4_SSL, uid: int) -> None:
             tmp_path.unlink(missing_ok=True)
 
     if not found_attachment:
-        logger.info("Mail poll: UID %d nema ziadnu prilohu, preskakujem", uid)
+        _process_body_only(message, uid)
+
+
+def _decode_subject(raw: str | None) -> str:
+    if not raw:
+        return "bez-predmetu"
+    return str(make_header(decode_header(raw)))
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", text).strip("-")
+    slug = re.sub(r"-+", "-", slug)
+    return slug or "mail"
+
+
+def _process_body_only(message: "email.message.Message", uid: int) -> None:
+    """Some senders (e.g. order-confirmation systems) put everything of value
+    straight in the HTML/plain body with no attachment at all -- seen in
+    production with a Bidfood order-status mail. Archive the body itself as
+    a document instead of silently dropping content like this."""
+    body_bytes: bytes | None = None
+    suffix = ".txt"
+    for content_type, ext in (("text/html", ".html"), ("text/plain", ".txt")):
+        for part in message.walk():
+            if part.get_content_type() != content_type:
+                continue
+            payload = part.get_payload(decode=True)
+            if payload:
+                charset = part.get_content_charset() or "utf-8"
+                try:
+                    text = payload.decode(charset, errors="replace")
+                except (LookupError, UnicodeDecodeError):
+                    text = payload.decode("utf-8", errors="replace")
+                body_bytes = text.encode("utf-8")
+                suffix = ext
+                break
+        if body_bytes:
+            break
+
+    if not body_bytes:
+        logger.info("Mail poll: UID %d nema ani prilohu ani citatelne telo, preskakujem", uid)
+        return
+
+    subject = _decode_subject(message.get("Subject"))
+    filename = f"{_slugify(subject)[:80]}{suffix}"
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="muninn-mailbody-"))
+    tmp_path = tmp_dir / filename
+    tmp_path.write_bytes(body_bytes)
+    try:
+        pipeline.process(tmp_path, source="mail", source_detail=f"uid:{uid} (telo spravy, bez prilohy)")
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)

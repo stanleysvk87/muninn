@@ -20,7 +20,14 @@ services:
       - ${HOME}/.claude:/home/muninn/.claude:ro
       - ${HOME}/.claude.json:/home/muninn/.claude.json:ro
       - ${MUNINN_CLAUDE_BIN_HOST_PATH}:/usr/local/bin/claude:ro
-      - /mnt/storage/data/claude-global:/mnt/storage/data/claude-global:ro
+      # Optional: if ~/.claude/CLAUDE.md on the host is a symlink into a
+      # shared global-config location (e.g. a NAS mount), bind-mount that
+      # same path so the symlink resolves inside the container too. Defaults
+      # to a harmless local placeholder dir -- unset on hosts that don't use
+      # this pattern instead of guessing a path (this used to hardcode opi's
+      # /mnt/storage/data/claude-global, which silently created an empty
+      # root-owned dir at that same absolute path on any other host).
+      - ${MUNINN_CLAUDE_GLOBAL_HOST_PATH:-./claude-global}:${MUNINN_CLAUDE_GLOBAL_CONTAINER_PATH:-/mnt/storage/data/claude-global}:ro
       # Same idea for codex CLI -- reuse the host login/subscription instead
       # of a separate API key. Unlike claude's ~/.claude (read-only, only
       # ever read for credentials in headless -p mode), codex actively
@@ -28,7 +35,9 @@ services:
       # a :ro mount fails hard with "Read-only file system (os error 30)".
       - ${HOME}/.codex:/home/muninn/.codex
       - ${MUNINN_CODEX_BIN_HOST_PATH}:/usr/local/bin/codex:ro
-      # Drop-zone watch folder on Barracuda -- registered as a watch folder
-      # in Settings, same container-side path as the host so it's unambiguous.
-      - /mnt/storage/data/muninn-inbox:/mnt/storage/data/muninn-inbox
+      # Optional drop-zone watch folder -- same container-side path as the
+      # host so it's unambiguous once registered in Settings. Defaults to a
+      # local placeholder; set MUNINN_WATCH_INBOX_HOST_PATH (and the
+      # container path, if it should differ) per host.
+      - ${MUNINN_WATCH_INBOX_HOST_PATH:-./inbox}:${MUNINN_WATCH_INBOX_CONTAINER_PATH:-/mnt/storage/data/muninn-inbox}
     restart: unless-stopped

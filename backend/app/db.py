@@ -18,6 +18,8 @@ _DOCUMENTS_COLUMNS = {
     "review_status": "TEXT NOT NULL DEFAULT 'na_kontrolu'",
     "evidence_json": "TEXT",
     "expiry_notified_at": "TEXT",
+    "notify_recurrence": "TEXT",
+    "next_recurrence_at": "TEXT",
 }
 
 _DEFAULT_SAVED_VIEWS = {

@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from ...audit import add_document_event
 from ...db import execute
+from ...expiry_notifier import RECURRENCE_MONTHS, _add_months
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -395,7 +396,7 @@ def update_document(document_id: int, payload: dict):
 
     allowed = {
         "correspondent", "doc_type", "doc_date", "expiry_date", "expiry_dismissed_at",
-        "amount_value", "amount_currency", "summary", "review_status",
+        "amount_value", "amount_currency", "summary", "review_status", "notify_recurrence",
     }
     fields = {k: v for k, v in payload.items() if k in allowed}
     if "expiry_date" in fields and fields["expiry_date"] != row["expiry_date"]:
@@ -403,6 +404,12 @@ def update_document(document_id: int, payload: dict):
         # sent for the old one -- otherwise expiry_notifier.py would never
         # ping again about a document it already (incorrectly) notified for.
         fields["expiry_notified_at"] = None
+    if "notify_recurrence" in fields and fields["notify_recurrence"] != row["notify_recurrence"]:
+        recurrence = fields["notify_recurrence"]
+        if recurrence in RECURRENCE_MONTHS:
+            fields["next_recurrence_at"] = _add_months(date.today(), RECURRENCE_MONTHS[recurrence]).isoformat()
+        else:
+            fields["next_recurrence_at"] = None
     if fields:
         changes = {
             key: {"from": row[key], "to": value}

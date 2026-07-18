@@ -23,6 +23,17 @@ const REVIEW_STATUSES = [
   { value: "archiv", label: "Archiv" },
 ];
 
+const RECURRENCE_OPTIONS = [
+  { value: "", label: "Ziadne" },
+  { value: "monthly", label: "Mesacne" },
+  { value: "quarterly", label: "Stvrtrocne" },
+  { value: "yearly", label: "Rocne" },
+];
+
+function recurrenceLabel(value) {
+  return RECURRENCE_OPTIONS.find((item) => item.value === value)?.label || value;
+}
+
 function reviewLabel(value) {
   return REVIEW_STATUSES.find((item) => item.value === value)?.label || value || "-";
 }
@@ -87,6 +98,7 @@ export default function DocumentDetail({ documentId, onBack }) {
       expiry_date: form.expiry_date,
       summary: form.summary,
       review_status: form.review_status,
+      notify_recurrence: form.notify_recurrence || null,
     });
     setDoc(res.data);
     setEditing(false);
@@ -142,6 +154,12 @@ export default function DocumentDetail({ documentId, onBack }) {
             <Field label="Datum" value={doc.doc_date} />
             {doc.expiry_date && <Field label="Plati do" value={doc.expiry_date} />}
             {doc.expiry_dismissed_at && <Field label="Upozornenie" value={`Vybavene ${doc.expiry_dismissed_at}`} />}
+            {doc.notify_recurrence && (
+              <Field
+                label="Opakovane upozornenie"
+                value={`${recurrenceLabel(doc.notify_recurrence)}${doc.next_recurrence_at ? ` (dalsie ${doc.next_recurrence_at})` : ""}`}
+              />
+            )}
             <Field label="Suma" value={doc.amount_value != null ? `${doc.amount_value} ${doc.amount_currency || ""}` : "-"} />
             <Field label="Zhrnutie" value={doc.summary} />
             <Field label="Zdroj" value={doc.source} />
@@ -249,6 +267,18 @@ export default function DocumentDetail({ documentId, onBack }) {
                 style={inputStyle}
               >
                 {REVIEW_STATUSES.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="eyebrow">Opakovane upozornenie (napr. poistka, predplatne)</span>
+              <select
+                value={form.notify_recurrence || ""}
+                onChange={(e) => setForm({ ...form, notify_recurrence: e.target.value })}
+                style={inputStyle}
+              >
+                {RECURRENCE_OPTIONS.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
                 ))}
               </select>

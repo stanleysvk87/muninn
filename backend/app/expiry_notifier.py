@@ -1,17 +1,29 @@
 import asyncio
+import calendar
 import logging
 from datetime import date, datetime, timedelta, timezone
 
 from . import crypto, telegram
+from .audit import add_document_event
 from .db import execute
 from .settings_store import get_setting
 
 logger = logging.getLogger("muninn.expiry_notifier")
 
-# Cheap check (one SQLite query, at most one Telegram call) -- no need to
-# poll more often than a few times a day for something that changes on the
-# scale of days.
+# Cheap check (one or two SQLite queries, at most a couple Telegram calls) --
+# no need to poll more often than a few times a day for something that
+# changes on the scale of days.
 CHECK_INTERVAL_SECONDS = 6 * 3600
+
+RECURRENCE_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
+
+
+def _add_months(d: date, months: int) -> date:
+    month_index = d.month - 1 + months
+    year = d.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 async def run_forever() -> None:
@@ -23,11 +35,24 @@ async def run_forever() -> None:
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
 
-def _check_once() -> None:
+def _telegram_credentials() -> tuple[str, str] | None:
     config = get_setting("telegram", {})
     if not config.get("enabled") or not config.get("bot_token_encrypted") or not config.get("chat_id"):
-        return
+        return None
+    return crypto.decrypt(config["bot_token_encrypted"]), config["chat_id"]
 
+
+def _check_once() -> None:
+    creds = _telegram_credentials()
+    if creds is None:
+        return
+    bot_token, chat_id = creds
+    _check_expiring(bot_token, chat_id)
+    _check_recurrences(bot_token, chat_id)
+
+
+def _check_expiring(bot_token: str, chat_id: str) -> None:
+    config = get_setting("telegram", {})
     days = config.get("notify_days_before", 30)
     horizon = (date.today() + timedelta(days=days)).isoformat()
     rows = execute(
@@ -43,17 +68,53 @@ def _check_once() -> None:
     if not rows:
         return
 
-    bot_token = crypto.decrypt(config["bot_token_encrypted"])
-    chat_id = config["chat_id"]
     lines = [f"- {row['correspondent']} ({row['doc_type']}): plati do {row['expiry_date']}" for row in rows]
     text = "Muninn - blizi sa expiracia:\n" + "\n".join(lines)
 
     ok, message = telegram.send_message(bot_token, chat_id, text)
     if not ok:
-        logger.warning("Telegram notifikacia zlyhala: %s", message)
+        logger.warning("Telegram expiry notifikacia zlyhala: %s", message)
         return
 
     now = datetime.now(timezone.utc).isoformat()
     for row in rows:
         execute("UPDATE documents SET expiry_notified_at = ? WHERE id = ?", (now, row["id"]))
     logger.info("Telegram: odoslana notifikacia o %d expirujucich dokumentoch", len(rows))
+
+
+def _check_recurrences(bot_token: str, chat_id: str) -> None:
+    """Some documents (insurance, subscriptions) warrant a recurring check-in
+    independent of any expiry_date -- e.g. "remind me every quarter to look
+    at this policy" -- rather than a single one-off expiry ping."""
+    today = date.today().isoformat()
+    rows = execute(
+        """SELECT * FROM documents
+           WHERE status = 'processed'
+             AND notify_recurrence IS NOT NULL
+             AND next_recurrence_at IS NOT NULL
+             AND next_recurrence_at <= ?
+           ORDER BY next_recurrence_at ASC""",
+        (today,),
+    ).fetchall()
+    if not rows:
+        return
+
+    for row in rows:
+        text = (
+            f"Muninn - pravidelna pripomienka ({row['notify_recurrence']}):\n"
+            f"- {row['correspondent']} ({row['doc_type']})"
+        )
+        ok, message = telegram.send_message(bot_token, chat_id, text)
+        if not ok:
+            logger.warning("Telegram recurrence notifikacia zlyhala pre #%s: %s", row["id"], message)
+            continue
+
+        months = RECURRENCE_MONTHS.get(row["notify_recurrence"], 1)
+        next_at = _add_months(date.today(), months).isoformat()
+        execute("UPDATE documents SET next_recurrence_at = ? WHERE id = ?", (next_at, row["id"]))
+        add_document_event(
+            row["id"],
+            "recurrence_notified",
+            f"Odoslana pravidelna pripomienka ({row['notify_recurrence']}), dalsia {next_at}",
+        )
+        logger.info("Telegram: odoslana pravidelna pripomienka pre #%s, dalsia %s", row["id"], next_at)

@@ -20,7 +20,7 @@ async def upload(file: UploadFile):
         raise api_error(422, "invalid_filename")
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="muninn-upload-"))
-    dest = tmp_dir / file.filename
+    dest = tmp_dir / Path(file.filename).name
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
 
@@ -67,7 +67,7 @@ async def upload_combine(files: list[UploadFile]):
             suffix = Path(file.filename).suffix.lower()
             if suffix != ".pdf" and suffix not in IMAGE_SUFFIXES:
                 raise api_error(422, "merge_unsupported_format", suffix=suffix or "?")
-            path = tmp_dir / f"{index:03d}_{file.filename}"
+            path = tmp_dir / f"{index:03d}_{Path(file.filename).name}"
             with path.open("wb") as out:
                 shutil.copyfileobj(file.file, out)
             staged_paths.append(path)

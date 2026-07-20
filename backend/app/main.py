@@ -73,14 +73,19 @@ app.include_router(api_router)
 if settings.frontend_dist_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=settings.frontend_dist_dir / "assets"), name="assets")
 
+    _frontend_dist_dir_resolved = settings.frontend_dist_dir.resolve()
+
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
-        candidate = settings.frontend_dist_dir / full_path
-        if candidate.is_file():
+        candidate = (_frontend_dist_dir_resolved / full_path).resolve()
+        if (
+            candidate.is_relative_to(_frontend_dist_dir_resolved)
+            and candidate.is_file()
+        ):
             return FileResponse(candidate)
-        return FileResponse(settings.frontend_dist_dir / "index.html")
+        return FileResponse(_frontend_dist_dir_resolved / "index.html")
 
 
 @app.on_event("startup")

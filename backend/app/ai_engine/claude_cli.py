@@ -32,8 +32,6 @@ class ClaudeCLIProvider:
                     prompt,
                     "--output-format",
                     "json",
-                    "--permission-mode",
-                    "bypassPermissions",
                     "--allowedTools",
                     "Read",
                     "--add-dir",

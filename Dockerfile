@@ -35,4 +35,13 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin muninn \
 USER muninn
 
 EXPOSE 8000
+
+# No curl/wget in this slim image -- python is already here. 127.0.0.1, not
+# localhost: uvicorn only binds IPv4 (--host 0.0.0.0), and localhost
+# resolves to ::1 first in these containers -- confirmed on Sindri (same
+# base image family) that clients which don't retry the next resolved
+# address report a false unhealthy against a perfectly fine service.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)" || exit 1
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

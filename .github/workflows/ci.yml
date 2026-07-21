@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest tests/ -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  # Separate from the backend/frontend jobs on purpose: those check "does
+  # our code work", this checks "do our dependencies have known CVEs" --
+  # different question, different failure meaning.
+  security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: pip-audit (backend dependencies)
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm audit (frontend dependencies)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare a CI-only .env
+        run: |
+          cp .env.example .env
+          # docker-compose.yml references these with no default -- only
+          # needed for `config` to interpolate cleanly and for the build
+          # context (claude/codex bind mounts point at host paths that
+          # don't exist on the runner, which is fine: they're never
+          # started here, only built).
+          {
+            echo "MUNINN_ENCRYPTION_KEY=ci-only-placeholder-not-a-real-key"
+            echo "MUNINN_CLAUDE_BIN_HOST_PATH=/usr/bin/true"
+            echo "MUNINN_CODEX_BIN_HOST_PATH=/usr/bin/true"
+          } >> .env
+      - run: docker compose config -q
+      - run: docker compose build

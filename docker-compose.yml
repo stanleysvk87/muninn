@@ -19,7 +19,7 @@ services:
       # --dangerously-skip-permissions as root.
       - ${HOME}/.claude:/home/muninn/.claude:ro
       - ${HOME}/.claude.json:/home/muninn/.claude.json:ro
-      - ${MUNINN_CLAUDE_BIN_HOST_PATH}:/usr/local/bin/claude:ro
+      - ${MUNINN_CLAUDE_BIN_HOST_PATH:-/dev/null}:/usr/local/bin/claude:ro
       # Optional: if ~/.claude/CLAUDE.md on the host is a symlink into a
       # shared global-config location (e.g. a NAS mount), bind-mount that
       # same path so the symlink resolves inside the container too. Defaults
@@ -34,7 +34,7 @@ services:
       # writes session/app-server state into ~/.codex on every invocation --
       # a :ro mount fails hard with "Read-only file system (os error 30)".
       - ${HOME}/.codex:/home/muninn/.codex
-      - ${MUNINN_CODEX_BIN_HOST_PATH}:/usr/local/bin/codex:ro
+      - ${MUNINN_CODEX_BIN_HOST_PATH:-/dev/null}:/usr/local/bin/codex:ro
       # Optional drop-zone watch folder -- same container-side path as the
       # host so it's unambiguous once registered in Settings. Defaults to a
       # local placeholder; set MUNINN_WATCH_INBOX_HOST_PATH (and the

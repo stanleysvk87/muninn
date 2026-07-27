@@ -29,8 +29,16 @@ machines across two different CPU architectures (aarch64 and x86_64).
 cp .env.example .env
 # edit .env: MUNINN_ENCRYPTION_KEY (required), MUNINN_PORT, and optionally
 # MUNINN_DATA_HOST_PATH / MUNINN_ARCHIVE_HOST_PATH if you don't want ./data and ./archive
+mkdir -p data archive
 docker compose up -d
 ```
+
+The `mkdir` matters: if `./data`/`./archive` don't exist yet, Docker
+auto-creates them as root when the container starts, and the container
+(non-root UID 1000, see the Dockerfile) then can't write its own SQLite
+database into a root-owned directory. Pre-creating them as your own user
+avoids that — on a typical single-user Linux box your user is already
+UID 1000, matching the container.
 
 - One container (`docker ps` shows only `muninn-muninn-1`), no extra
   nginx/Caddy.

@@ -61,13 +61,28 @@ export default function Settings() {
     refreshDiagnostics();
   }
 
-  async function addFolder() {
+  async function addFolder(confirmExisting = false) {
     setFolderError(null);
     try {
-      const res = await api.post("/settings/watch-folders", { path: newFolder });
+      const res = await api.post("/settings/watch-folders", {
+        path: newFolder,
+        confirm_existing: confirmExisting,
+      });
       setFolders(res.data.folders);
       setNewFolder("");
     } catch (err) {
+      // 409 folder_not_empty: the backend refuses to register a folder that
+      // already has files in it without an explicit acknowledgement -- every
+      // one of them will be sent to the AI provider and physically moved out
+      // of that directory into the archive. Ask before doing that.
+      const detail = err?.response?.data?.detail;
+      if (err?.response?.status === 409 && detail?.code === "folder_not_empty") {
+        if (window.confirm(apiErrorMessage(err))) {
+          await addFolder(true);
+          return;
+        }
+        return;
+      }
       setFolderError(apiErrorMessage(err));
     }
   }
@@ -137,7 +152,7 @@ export default function Settings() {
         </ul>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} placeholder={t("settings.folderPlaceholder")} style={inputStyle} />
-          <Button onClick={addFolder}>{t("settings.add")}</Button>
+          <Button onClick={() => addFolder(false)}>{t("settings.add")}</Button>
         </div>
         {folderError && <p style={{ color: "var(--color-warning)", marginTop: 8 }}>{folderError}</p>}
       </Card>

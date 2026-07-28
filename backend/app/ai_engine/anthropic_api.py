@@ -10,6 +10,22 @@ from .prompt import build_prompt, read_inline_text
 
 UNAVAILABLE_STATUS_CODES = {401, 403, 429, 500, 502, 503, 529}
 
+# The prompt asks for a full transcription (full_text) of the document on top
+# of the metadata, and on Sonnet 5 adaptive thinking is on by default and is
+# counted against this same limit. 1024 was nowhere near enough: a two-page
+# contract came back truncated, the JSON was incomplete, and json.loads()
+# raised JSONDecodeError -- which is NOT an ExtractionError, so it escaped the
+# whole ingest pipeline as an unhandled 500 (no document row, no park_failed,
+# leaked temp dir).
+MAX_TOKENS = 8192
+
+# Sonnet 5 introductory pricing, USD per million tokens, valid until
+# 2026-08-31; the standard rate afterwards is $3 / $15. Estimate only -- it
+# ignores prompt-cache discounts. Kept as named constants so the switch-over
+# is a one-line edit instead of a magic number in an expression.
+INPUT_USD_PER_MTOK = 2.0
+OUTPUT_USD_PER_MTOK = 10.0
+
 EXTRACTION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -89,7 +105,7 @@ class AnthropicAPIProvider:
         try:
             response = self._client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=MAX_TOKENS,
                 output_config={"format": {"type": "json_schema", "schema": EXTRACTION_SCHEMA}},
                 messages=[
                     {
@@ -109,18 +125,30 @@ class AnthropicAPIProvider:
 
         if response.stop_reason == "refusal":
             raise ExtractionError("Model odmietol spracovat dokument")
+        if response.stop_reason == "max_tokens":
+            # Truncated output means the JSON below is incomplete. Fail as an
+            # ExtractionError so the pipeline can park the file and fall
+            # through to the next provider, instead of blowing up on a
+            # JSONDecodeError nobody catches.
+            raise ExtractionError(
+                f"Odpoved modelu bola orezana na limite {MAX_TOKENS} tokenov "
+                "(prilis dlhy dokument) - JSON je neuplny"
+            )
 
         text = next((b.text for b in response.content if b.type == "text"), None)
         if not text:
             raise ExtractionError("Prazdna odpoved od API")
 
-        data_json = json.loads(text)
+        try:
+            data_json = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ExtractionError(f"Neplatny JSON od Anthropic API: {exc}") from exc
+
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
-        # Sonnet 5 standard rate ($3/$15 per MTok) -- an estimate, not the
-        # billed-exact figure (doesn't account for prompt-cache discounts or
-        # any temporary introductory pricing).
-        cost_usd = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+        cost_usd = (
+            input_tokens * INPUT_USD_PER_MTOK + output_tokens * OUTPUT_USD_PER_MTOK
+        ) / 1_000_000
 
         return ExtractionResult(
             correspondent=data_json.get("correspondent") or "neznama-firma",

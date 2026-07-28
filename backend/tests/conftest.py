@@ -24,6 +24,8 @@ os.environ["MUNINN_COOKIE_SECURE"] = "false"
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.auth import throttle  # noqa: E402
+from app.auth.security import bootstrap_token  # noqa: E402
 from app.db import execute  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -49,6 +51,9 @@ def clean_tables():
     session rather than each getting a fresh file, so this is what keeps
     them from seeing each other's rows."""
     yield
+    # Login throttling counters are process-global, so one test's failed
+    # login attempts must not lock out the next test's fixture login.
+    throttle.clear_all()
     for table in (
         "document_duplicate_candidates",
         "document_events",
@@ -65,7 +70,14 @@ def admin_session(client):
     client.cookies.clear()
     res = client.post(
         "/api/auth/bootstrap",
-        json={"username": "admin", "password": "test-password-123", "consent": True},
+        json={
+            "username": "admin",
+            "password": "test-password-123",
+            "consent": True,
+            # Creating the first account requires the host-side setup token
+            # (see app/auth/security.bootstrap_token).
+            "setup_token": bootstrap_token(),
+        },
     )
     if res.status_code == 409:
         res = client.post(

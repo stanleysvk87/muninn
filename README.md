@@ -59,15 +59,27 @@ your document archive doesn't need its own billing.
   correspondent + amount + nearby date, not just an exact file hash) that
   flags likely duplicates for a manual decision.
 - **Audit trail**: every ingest attempt and every change to a document is
-  logged (who/what/when), visible per-document.
+  logged (who/what/when), visible per-document. Deletions are recorded
+  separately (in `document_deletions`, which deliberately survives the
+  deleted row) since a document's own event history goes away with it.
 - **Bilingual UI** (Slovak/English) with a language switcher.
-- **Security-conscious by design**: the AI only ever gets read access to
-  one isolated, per-job temp copy of the document being processed — never
-  the shared inbox/watch-folder — so a malicious document (prompt
-  injection) can't escalate into filesystem or shell access. Secrets
-  (mail password, Telegram bot token, API key) are encrypted at rest.
-  Session-cookie auth with CSRF, PBKDF2 password hashing, non-root
-  container.
+- **Security-conscious by design**: the AI is pointed at one isolated,
+  per-job temp copy of the document being processed — never at the shared
+  inbox/watch-folder it came from. Secrets (mail password, Telegram bot
+  token, API key) are encrypted at rest. Session-cookie auth with CSRF,
+  PBKDF2 password hashing with login rate-limiting, a setup token for
+  first-admin creation, archived documents served download-only (no
+  in-app rendering of `.html`/`.svg`), a CSP, and a non-root container.
+
+  **Known limit, stated plainly:** this is *not* a sandbox. With the CLI
+  providers the model runs on the host/container with that user's
+  filesystem read access — `codex -s read-only` restricts writes and
+  network, not reads, and `claude -p --allowedTools Read` restricts which
+  tools it may call, not which paths `Read` may touch. A prompt-injected
+  document could in principle instruct the model to read another file and
+  echo it into the extracted text. Run the CLI providers only against
+  documents you'd be willing to hand the provider anyway, or use the
+  `anthropic_api` provider (which sends only the document itself).
 - **GDPR-conscious**: account creation requires explicit consent to
   AI processing (documents are sent to a third-party provider for
   extraction); deleting a document removes the file from disk, not just

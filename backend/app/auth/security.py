@@ -1,13 +1,22 @@
 import hashlib
+import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
 from ..config import settings
 from ..db import execute
 
+logger = logging.getLogger("muninn.auth")
+
 SESSION_COOKIE_NAME = "muninn_session"
 CSRF_COOKIE_NAME = "muninn_csrf"
 PBKDF2_ITERATIONS = 200_000
+BOOTSTRAP_TOKEN_FILENAME = "bootstrap-token.txt"
+
+# Salt for the decoy hash below. Random per process on purpose -- it never
+# has to verify against anything, it only has to cost the same as a real one.
+_DECOY_SALT = secrets.token_hex(16)
 
 
 def _now_iso() -> str:
@@ -23,6 +32,66 @@ def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
 def verify_password(password: str, password_hash: str, password_salt: str) -> bool:
     candidate, _ = hash_password(password, password_salt)
     return secrets.compare_digest(candidate, password_hash)
+
+
+def burn_password_time(password: str) -> None:
+    """Spend the same ~0.11 s of PBKDF2 a real verification costs.
+
+    /api/auth/login used to return "invalid credentials" for an unknown
+    username *before* doing any key derivation, so an unknown user answered
+    in ~1 ms and a known one in ~110 ms: a trivially measurable oracle for
+    enumerating which accounts exist. Called on the unknown-user path so both
+    branches cost the same."""
+    hash_password(password, _DECOY_SALT)
+
+
+def bootstrap_token() -> str:
+    """Token required to create the very first admin account.
+
+    /api/auth/bootstrap has to be reachable without a session (there is no
+    account yet), and it used to be pure first-come-first-served: anyone who
+    reached the app during the window before the owner registered -- a fresh
+    deploy, or a restore onto an empty muninn.db -- got the admin account and
+    with it the entire document archive. The token closes that window: it is
+    generated on the host the app runs on, readable only by the app's own
+    user, and consumed once the account exists.
+
+    Set MUNINN_BOOTSTRAP_TOKEN to pin it explicitly (e.g. in an automated
+    deploy); otherwise it is generated into data_dir/bootstrap-token.txt.
+    """
+    if settings.bootstrap_token:
+        return settings.bootstrap_token
+
+    path = settings.data_dir / BOOTSTRAP_TOKEN_FILENAME
+    if path.is_file():
+        existing = path.read_text(encoding="utf-8").strip()
+        if existing:
+            return existing
+
+    token = secrets.token_urlsafe(24)
+    path.write_text(token + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        logger.warning("Nepodarilo sa nastavit prava 0600 na %s", path)
+    logger.warning(
+        "Ziadny pouzivatel neexistuje. Token pre vytvorenie admin uctu je v %s", path
+    )
+    return token
+
+
+def verify_bootstrap_token(candidate: str | None) -> bool:
+    return bool(candidate) and secrets.compare_digest(candidate, bootstrap_token())
+
+
+def consume_bootstrap_token() -> None:
+    """The token is single-use: once an admin account exists, bootstrap is a
+    409 anyway, so leaving the file around only risks it being copied."""
+    path = settings.data_dir / BOOTSTRAP_TOKEN_FILENAME
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Nepodarilo sa zmazat bootstrap token %s", path)
 
 
 def users_exist() -> bool:

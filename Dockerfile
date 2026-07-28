@@ -24,11 +24,19 @@ ENV MUNINN_DATA_DIR=/app/data \
     MUNINN_DB_PATH=/app/data/muninn.db \
     MUNINN_FRONTEND_DIST_DIR=/app/frontend/dist
 
-# Must NOT run as root: the claude CLI refuses --dangerously-skip-permissions
-# (which our claude_cli provider relies on for headless extraction) when
-# invoked as root/sudo, as a hard-coded safety guard. UID 1000 matches the
-# typical single-user homelab host account so bind-mounted volumes (data,
-# archive, ~/.claude) need no extra chown gymnastics.
+# Runs as non-root. NOTE: the original reason given here ("claude refuses
+# --dangerously-skip-permissions as root") no longer describes the code --
+# ai_engine/claude_cli.py never passes that flag; it runs
+# `claude -p ... --allowedTools Read --add-dir <job tmp dir>`. Non-root is
+# kept because it is right on its own merits, and UID 1000 matches the typical
+# single-user homelab host account so the bind-mounted volumes (data, archive,
+# ~/.claude) need no chown gymnastics.
+#
+# Be aware of what this does NOT protect: the host's ~/.claude and ~/.codex
+# are bind-mounted into this container (see docker-compose.yml) and the AI
+# runs here over untrusted document content, so those credential files are
+# within the model's filesystem reach. Nothing in this repo prevents that --
+# only the CLI's own headless permission handling does.
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin muninn \
     && mkdir -p /app/data /app/archive \
     && chown -R muninn:muninn /app

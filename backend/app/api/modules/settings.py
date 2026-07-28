@@ -7,12 +7,48 @@ from fastapi import APIRouter, HTTPException
 from ... import crypto, telegram
 from ...ai_engine import get_provider, get_provider_chain
 from ...ai_engine.base import ExtractionError
+from ...config import settings
 from ...db import execute
 from ...errors import api_error
 from ...ingest.watch_folder import sync_watch_folders
 from ...settings_store import get_setting, set_setting
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# Registering a watch folder is destructive by design: every file in it is
+# sent to a third-party AI provider and then physically MOVED (shutil.move)
+# into the archive, renamed. There is no undo. A typo one path segment short
+# (/mnt/storage/data instead of /mnt/storage/data/muninn-inbox) would empty
+# a whole data tree, so these directories are refused outright.
+FORBIDDEN_WATCH_ROOTS = {
+    "/", "/app", "/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64",
+    "/media", "/mnt", "/opt", "/proc", "/root", "/run", "/sbin", "/srv",
+    "/sys", "/tmp", "/usr", "/var",
+}
+
+
+def _validate_watch_folder(raw_path: str) -> Path:
+    if not raw_path or not raw_path.strip():
+        raise api_error(422, "folder_invalid")
+    path = Path(raw_path.strip())
+    if not path.is_absolute():
+        raise api_error(422, "folder_not_absolute")
+    try:
+        resolved = path.resolve()
+    except OSError as exc:
+        raise api_error(422, "folder_invalid") from exc
+    if not resolved.is_dir():
+        raise api_error(422, "folder_invalid")
+    if str(resolved) in FORBIDDEN_WATCH_ROOTS or resolved == Path.home():
+        raise api_error(422, "folder_too_broad", path=str(resolved))
+
+    # Watching the archive (or the DB dir) would feed the app its own output
+    # back in an endless loop.
+    for protected in (settings.archive_dir, settings.data_dir, settings.db_path.parent):
+        protected_resolved = protected.resolve()
+        if resolved == protected_resolved or resolved in protected_resolved.parents:
+            raise api_error(422, "folder_is_app_storage", path=str(resolved))
+    return resolved
 
 
 @router.get("/watch-folders")
@@ -22,15 +58,28 @@ def list_watch_folders():
 
 @router.post("/watch-folders")
 def add_watch_folder(payload: dict):
-    path = payload.get("path", "")
-    if not path or not Path(path).is_dir():
-        raise api_error(422, "folder_invalid")
+    resolved = _validate_watch_folder(payload.get("path", ""))
+
+    # Everything already sitting in the folder gets swept on registration
+    # (watch_folder._scan_existing). That is intended behaviour, but it must
+    # not be a surprise: the caller has to acknowledge how many files it is
+    # about to send to the AI and move out of that directory.
+    existing = [entry.name for entry in resolved.iterdir() if entry.is_file()]
+    if existing and not payload.get("confirm_existing"):
+        raise api_error(
+            409,
+            "folder_not_empty",
+            count=len(existing),
+            path=str(resolved),
+        )
+
+    path = str(resolved)
     folders = get_setting("watch_folders", [])
     if path not in folders:
         folders.append(path)
         set_setting("watch_folders", folders)
         sync_watch_folders()
-    return {"folders": folders}
+    return {"folders": folders, "swept_existing_files": len(existing)}
 
 
 @router.delete("/watch-folders")

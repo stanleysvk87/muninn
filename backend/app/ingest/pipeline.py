@@ -414,7 +414,19 @@ def _extract_via_chain(file_path: Path, mime_type: str) -> ChainResult:
                 result = candidate_result
                 provider = candidate
                 break
-            except ExtractionError as exc:
+            except Exception as exc:
+                # Deliberately broader than ExtractionError. A provider that
+                # raises something unexpected (a JSONDecodeError on a
+                # truncated response, an SDK-internal error, an OSError) used
+                # to escape this loop entirely: the whole ingest died with an
+                # unhandled 500, no document row was written, the file was
+                # never parked, and the caller's temp dir leaked. A single
+                # misbehaving provider must cost us that provider, not the
+                # document.
+                if not isinstance(exc, ExtractionError):
+                    exc = ExtractionError(
+                        f"{candidate.name} zlyhal neocakavane: {type(exc).__name__}: {exc}"
+                    )
                 if candidate_result is not None:
                     last_raw_response = candidate_result.get("raw_response")
                 if not isinstance(exc, ProviderUnavailableError):

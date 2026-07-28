@@ -26,12 +26,36 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(messag
 app = FastAPI(title="Muninn")
 
 
+# Second line of defence behind the download-only disposition in
+# api/modules/documents.py: even if some archived document did end up being
+# rendered on this origin, it gets no script execution, no framing and no
+# outbound connection. The built frontend is a Vite bundle with no inline
+# <script> (verified against frontend/dist/index.html), so 'self' is enough
+# for script-src; 'unsafe-inline' is only needed for style, because React
+# style props become inline style attributes.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        # setdefault, not overwrite: the document-file route sets its own,
+        # stricter sandbox policy for attachment responses.
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         return response
 
 

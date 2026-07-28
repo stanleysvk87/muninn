@@ -27,7 +27,8 @@ machines across two different CPU architectures (aarch64 and x86_64).
 
 ```
 cp .env.example .env
-# edit .env: MUNINN_ENCRYPTION_KEY (required), MUNINN_PORT, and optionally
+# edit .env: MUNINN_ENCRYPTION_KEY (required), MUNINN_PORT (the published host
+# port; the app always listens on 8000 inside the container), and optionally
 # MUNINN_DATA_HOST_PATH / MUNINN_ARCHIVE_HOST_PATH if you don't want ./data and ./archive
 mkdir -p data archive
 docker compose up -d

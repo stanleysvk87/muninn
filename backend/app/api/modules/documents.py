@@ -1,14 +1,17 @@
 import csv
 import io
 import json
+import sqlite3
+import tempfile
 import zipfile
 from datetime import date, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
-from ...audit import add_document_event
+from ...audit import add_deletion_record, add_document_event
 from ...db import execute
 from ...errors import api_error
 from ...expiry_notifier import RECURRENCE_MONTHS, _add_months
@@ -20,13 +23,32 @@ EXPORT_FIELDS = [
     "amount_currency", "summary", "summary_sk", "summary_en", "original_filename", "stored_path",
 ]
 
-DOWNLOAD_ONLY_MIME_TYPES = {
-    "application/octet-stream",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+# Allowlist, deliberately NOT a denylist: archived documents are
+# attacker-influenced content (the IMAP poller archives an HTML mail body
+# verbatim as .html, and anyone who can mail the ingest address controls
+# it), so a MIME type nobody thought about must default to "download",
+# never to "render on Muninn's own origin". Rendering text/html or
+# image/svg+xml inline used to give such a document script execution on the
+# app origin -> read of the non-httponly muninn_csrf cookie -> full
+# authenticated API access (export/delete of the whole archive).
+INLINE_SAFE_MIME_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/pjpeg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+    "image/tiff",
+    "image/avif",
+    "image/heic",
+    "image/heif",
 }
+# Extra belt-and-braces for everything served as an attachment: even if a
+# browser were to ignore Content-Disposition, a fully sandboxed response
+# (unique opaque origin, no scripts) cannot touch Muninn's cookies.
+ATTACHMENT_CSP = "default-src 'none'; sandbox"
 EXTENSION_MIME_TYPES = {
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".xls": "application/vnd.ms-excel",
@@ -36,12 +58,45 @@ EXTENSION_MIME_TYPES = {
 }
 
 
+def _fts_query(raw: str) -> str | None:
+    """Turn whatever the user typed into a syntactically valid FTS5 query.
+
+    documents_fts MATCH used to get the raw string, so any input carrying
+    FTS5 syntax blew up with a sqlite3.OperationalError -> unhandled 500.
+    Verified failures on completely ordinary input: 'T-Mobile' (parsed as
+    column filter -> "no such column: Mobile"), "it's", a lone double quote,
+    a trailing 'OR'. Slovak correspondent names are full of hyphens and the
+    search box fires on every keystroke, so this happened during normal use.
+
+    Every whitespace-separated token becomes a quoted FTS5 phrase (with
+    embedded quotes doubled, the FTS5 escape), joined implicitly by AND.
+    That makes the query total -- no input can be a syntax error -- at the
+    cost of not exposing FTS5 boolean operators to the user, which was never
+    a documented feature of the search box anyway.
+    """
+    tokens = [token.replace('"', '""') for token in raw.split() if token.strip('"')]
+    if not tokens:
+        return None
+    return " ".join(f'"{token}"' for token in tokens)
+
+
 def _row_to_dict(row) -> dict:
     return {k: row[k] for k in row.keys()}
 
 
-def _document_payload(row) -> dict:
+# Columns that hold the full document transcription and the raw AI answer.
+# A single one of them can be hundreds of KB, so list/facet-style responses
+# drop them: the 50-row dashboard page used to ship 50 complete
+# transcriptions plus 50 raw AI responses on every single load. The
+# single-document endpoint still returns them in full.
+HEAVY_COLUMNS = ("full_text", "ai_raw_response")
+
+
+def _document_payload(row, include_heavy: bool = True) -> dict:
     data = _row_to_dict(row)
+    if not include_heavy:
+        for column in HEAVY_COLUMNS:
+            data.pop(column, None)
     evidence_json = data.pop("evidence_json", None)
     try:
         data["evidence"] = json.loads(evidence_json) if evidence_json else []
@@ -114,18 +169,23 @@ def _list_documents_query(
     saved_view: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_heavy: bool = False,
 ) -> list[dict]:
     clauses, params = _saved_view_clauses(saved_view)
     join = ""
     select_extra = ""
     if q:
+        match_expression = _fts_query(q)
+        if match_expression is None:
+            # The user typed only punctuation/quotes -- nothing to match on.
+            return []
         join = "JOIN documents_fts ON documents_fts.rowid = documents.id"
         # column index -1 lets FTS5 pick whichever column actually matched
         # (correspondent/doc_type/summary/summary_sk/summary_en/original_filename/full_text)
         # instead of guessing one in advance.
         select_extra = ", snippet(documents_fts, -1, '<<', '>>', ' ... ', 20) AS match_snippet"
         clauses.append("documents_fts MATCH ?")
-        params.append(q)
+        params.append(match_expression)
     if correspondent:
         clauses.append("correspondent = ?")
         params.append(correspondent)
@@ -137,12 +197,17 @@ def _list_documents_query(
         params.append(review_status)
 
     where = f"WHERE {' AND '.join(f'({clause})' for clause in clauses)}" if clauses else ""
-    rows = execute(
-        f"SELECT documents.*{select_extra} FROM documents {join} {where} "
-        f"ORDER BY documents.created_at DESC LIMIT ? OFFSET ?",
-        (*params, limit, offset),
-    ).fetchall()
-    return [_document_payload(r) for r in rows]
+    try:
+        rows = execute(
+            f"SELECT documents.*{select_extra} FROM documents {join} {where} "
+            f"ORDER BY documents.created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        # _fts_query() should make this unreachable; a 422 beats a 500 if
+        # some future FTS5 edge case still slips through.
+        raise api_error(422, "invalid_search_query") from exc
+    return [_document_payload(r, include_heavy=include_heavy) for r in rows]
 
 
 @router.get("")
@@ -161,8 +226,8 @@ def list_documents(
         doc_type=doc_type,
         review_status=review_status,
         saved_view=saved_view,
-        limit=limit,
-        offset=offset,
+        limit=min(max(limit, 1), 500),
+        offset=max(offset, 0),
     )
 
 
@@ -238,7 +303,7 @@ def get_expiring_documents(days: int = 60):
            ORDER BY expiry_date ASC""",
         (horizon,),
     ).fetchall()
-    return [_document_payload(r) for r in rows]
+    return [_document_payload(r, include_heavy=False) for r in rows]
 
 
 def _parse_ids(ids: str) -> list[int]:
@@ -260,7 +325,9 @@ def export_documents(format: str = "json", q: str | None = None, ids: str | None
             ).fetchall()
         ]
     else:
-        rows = list_documents(q=q, limit=10000, offset=0)
+        # An export deliberately keeps the heavy columns (that is the point of
+        # an export), unlike the dashboard list.
+        rows = _list_documents_query(q=q, limit=10000, offset=0, include_heavy=True)
 
     if format == "json":
         return rows
@@ -278,18 +345,29 @@ def export_documents(format: str = "json", q: str | None = None, ids: str | None
         )
 
     if format == "zip":
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w") as zf:
-            for row in rows:
-                stored_path = Path(row["stored_path"])
-                if stored_path.exists():
-                    zf.write(stored_path, arcname=f"{row['id']}_{stored_path.name}")
-            zf.writestr("manifest.json", json.dumps(rows, indent=2))
-        buffer.seek(0)
-        return StreamingResponse(
-            buffer,
+        # Built on disk, not in a BytesIO: a full-archive export used to
+        # materialise every document in RAM at once before a single byte was
+        # sent, which on an 8GB SBC is a straightforward way to OOM the
+        # service. FileResponse streams it and the BackgroundTask deletes the
+        # temp file once the response has been fully sent.
+        tmp = tempfile.NamedTemporaryFile(prefix="muninn-export-", suffix=".zip", delete=False)
+        tmp_path = Path(tmp.name)
+        tmp.close()
+        try:
+            with zipfile.ZipFile(tmp_path, "w") as zf:
+                for row in rows:
+                    stored_path = Path(row["stored_path"])
+                    if stored_path.is_file():
+                        zf.write(stored_path, arcname=f"{row['id']}_{stored_path.name}")
+                zf.writestr("manifest.json", json.dumps(rows, indent=2))
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        return FileResponse(
+            tmp_path,
             media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=documents.zip"},
+            filename="documents.zip",
+            background=BackgroundTask(tmp_path.unlink, missing_ok=True),
         )
 
     raise api_error(400, "unknown_export_format")
@@ -402,12 +480,14 @@ def get_document_file(document_id: int, download: bool = False):
         raise api_error(404, "file_not_found_on_disk")
 
     media_type = _download_mime_type(path, row["mime_type"])
-    disposition = "attachment" if download or media_type in DOWNLOAD_ONLY_MIME_TYPES else "inline"
+    inline = not download and media_type.split(";")[0].strip().lower() in INLINE_SAFE_MIME_TYPES
+    headers = {} if inline else {"Content-Security-Policy": ATTACHMENT_CSP}
     return FileResponse(
         path,
         media_type=media_type,
         filename=row["original_filename"],
-        content_disposition_type=disposition,
+        content_disposition_type="inline" if inline else "attachment",
+        headers=headers,
     )
 
 
@@ -506,24 +586,63 @@ def retry_document(document_id: int):
     return result
 
 
+def _actor(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    try:
+        return user["username"] if user is not None else "user"
+    except (KeyError, IndexError, TypeError):
+        return "user"
+
+
 @router.delete("")
-def bulk_delete_documents(ids: str):
+def bulk_delete_documents(ids: str, request: Request):
+    """Bulk delete used to unlink every file first and only then issue a
+    single DELETE. One bad stored_path in the middle of the batch (an
+    api_error out of _delete_stored_file) aborted the request before the
+    DELETE ever ran: the already-unlinked files were gone, every DB row
+    survived, and the caller got told nothing was deleted. Now each file is
+    removed best-effort, the rows always go, and the response reports what
+    actually happened instead of just echoing the number of ids sent."""
     id_list = _parse_ids(ids)
     if not id_list:
         raise api_error(422, "no_ids_to_delete")
     placeholders = ",".join("?" * len(id_list))
-    rows = execute(f"SELECT stored_path FROM documents WHERE id IN ({placeholders})", tuple(id_list)).fetchall()
+    rows = execute(
+        f"SELECT * FROM documents WHERE id IN ({placeholders})", tuple(id_list)
+    ).fetchall()
+    if not rows:
+        return {"deleted": 0, "file_errors": []}
+
+    actor = _actor(request)
+    file_errors: list[dict] = []
     for row in rows:
-        _delete_stored_file(row["stored_path"])
-    execute(f"DELETE FROM documents WHERE id IN ({placeholders})", tuple(id_list))
-    return {"deleted": len(id_list)}
+        error_message = None
+        try:
+            _delete_stored_file(row["stored_path"])
+            removed = True
+        except HTTPException as exc:
+            removed = False
+            detail = exc.detail
+            error_message = detail.get("message") if isinstance(detail, dict) else str(detail)
+            file_errors.append({"id": row["id"], "error": error_message})
+        add_deletion_record(row, actor=actor, file_removed=removed, error_message=error_message)
+
+    deleted_ids = [row["id"] for row in rows]
+    deleted_placeholders = ",".join("?" * len(deleted_ids))
+    cur = execute(
+        f"DELETE FROM documents WHERE id IN ({deleted_placeholders})", tuple(deleted_ids)
+    )
+    return {"deleted": cur.rowcount, "file_errors": file_errors}
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: int):
+def delete_document(document_id: int, request: Request):
     row = execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
     if row is None:
         raise api_error(404, "document_not_found")
+    # Single-document delete stays fail-loud: if the file can't be removed,
+    # nothing is deleted at all, so "delete" never half-succeeds silently.
     _delete_stored_file(row["stored_path"])
+    add_deletion_record(row, actor=_actor(request), file_removed=True)
     execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return {"ok": True}

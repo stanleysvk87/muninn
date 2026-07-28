@@ -87,6 +87,26 @@ CREATE TABLE IF NOT EXISTS document_events (
 );
 CREATE INDEX IF NOT EXISTS idx_document_events_document ON document_events(document_id, created_at DESC);
 
+-- Deliberately NO foreign key to documents: document_events cascades away
+-- with the row it belongs to, so deletion -- the one operation a GDPR trail
+-- needs most, and the only irreversible one in the app -- left no trace at
+-- all. This table is the surviving record of what was removed, by whom and
+-- when. It intentionally keeps only identifying metadata, never the
+-- document body/summary.
+CREATE TABLE IF NOT EXISTS document_deletions (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id         INTEGER NOT NULL,
+    original_filename   TEXT,
+    correspondent       TEXT,
+    doc_type            TEXT,
+    stored_path         TEXT,
+    file_removed        INTEGER NOT NULL DEFAULT 0,
+    error_message       TEXT,
+    actor               TEXT NOT NULL DEFAULT 'user',
+    created_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_document_deletions_created ON document_deletions(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS ingest_jobs (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     document_id         INTEGER REFERENCES documents(id) ON DELETE SET NULL,

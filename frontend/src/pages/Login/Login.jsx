@@ -18,6 +18,7 @@ export default function Login({ onLoggedIn }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [consent, setConsent] = useState(false);
+  const [setupToken, setSetupToken] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,7 +28,10 @@ export default function Login({ onLoggedIn }) {
     setError(null);
     try {
       const path = mode === "login" ? "/auth/login" : "/auth/bootstrap";
-      const payload = mode === "login" ? { username, password } : { username, password, consent };
+      const payload =
+        mode === "login"
+          ? { username, password }
+          : { username, password, consent, setup_token: setupToken.trim() };
       const res = await api.post(path, payload);
       onLoggedIn(res.data);
     } catch (err) {
@@ -71,6 +75,19 @@ export default function Login({ onLoggedIn }) {
             required
             style={inputStyle}
           />
+          {mode === "bootstrap" && (
+            /* The first admin account can only be created by someone with
+               access to the host itself -- the token is written to
+               data/bootstrap-token.txt when there is no user yet. */
+            <input
+              placeholder={t("login.setupToken")}
+              value={setupToken}
+              onChange={(e) => setSetupToken(e.target.value)}
+              required
+              autoComplete="off"
+              style={inputStyle}
+            />
+          )}
           {mode === "bootstrap" && (
             <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--color-text-secondary)" }}>
               <input

@@ -177,9 +177,53 @@ def get_db() -> sqlite3.Connection:
     return _connection
 
 
-def execute(query: str, params: tuple = ()) -> sqlite3.Cursor:
+class Result:
+    """A materialised, thread-safe stand-in for sqlite3.Cursor.
+
+    The whole app shares ONE sqlite3 connection opened with
+    check_same_thread=False, and execute() used to hand the live cursor back
+    to the caller after releasing the lock -- so fetchall()/fetchone() ran
+    OUTSIDE it. A watch-folder or mail-poller thread calling execute() while
+    a request thread sat between execute() and fetchall() on that same
+    connection could raise ProgrammingError/InterfaceError or interleave
+    rows. Rows are now read while the lock is still held, and the caller
+    gets this snapshot, which keeps the cursor API (fetchall / fetchone /
+    lastrowid / rowcount / iteration) that every call site already uses.
+    """
+
+    __slots__ = ("_rows", "_index", "lastrowid", "rowcount")
+
+    def __init__(self, rows: list, lastrowid: int | None, rowcount: int):
+        self._rows = rows
+        self._index = 0
+        self.lastrowid = lastrowid
+        self.rowcount = rowcount
+
+    def fetchall(self) -> list:
+        rows = self._rows[self._index:]
+        self._index = len(self._rows)
+        return rows
+
+    def fetchone(self):
+        if self._index >= len(self._rows):
+            return None
+        row = self._rows[self._index]
+        self._index += 1
+        return row
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+def execute(query: str, params: tuple = ()) -> Result:
     with _lock:
         db = get_db()
         cur = db.execute(query, params)
-        db.commit()
-        return cur
+        rows = cur.fetchall()
+        result = Result(rows, cur.lastrowid, cur.rowcount)
+        # Only commit when this statement actually opened a write
+        # transaction. Committing unconditionally meant every read flushed
+        # whatever another thread had half-written.
+        if db.in_transaction:
+            db.commit()
+        return result

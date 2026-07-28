@@ -14,9 +14,15 @@ services:
       - ${MUNINN_ARCHIVE_HOST_PATH:-./archive}:/app/archive
       # Reuse the host's claude CLI login instead of an API key (only works
       # because this container runs on the same aarch64 host — see
-      # INSTALL.md for the tradeoffs vs. the API-key path). The container
-      # runs as non-root (UID 1000) because claude refuses
-      # --dangerously-skip-permissions as root.
+      # INSTALL.md for the tradeoffs vs. the API-key path).
+      #
+      # ⚠️ TRADEOFF, be explicit about it: these mounts put real credential
+      # files inside the same container where the AI processes untrusted
+      # document content. `:ro` stops the model from *writing* them, not from
+      # reading them, and neither `codex -s read-only` nor
+      # `claude --allowedTools Read` confines which paths can be read. If that
+      # is not an acceptable risk for this archive, drop these two mounts and
+      # run MUNINN_AI_PROVIDER_MODE=anthropic_api with an API key instead.
       - ${HOME}/.claude:/home/muninn/.claude:ro
       - ${HOME}/.claude.json:/home/muninn/.claude.json:ro
       - ${MUNINN_CLAUDE_BIN_HOST_PATH:-/dev/null}:/usr/local/bin/claude:ro

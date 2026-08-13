@@ -4,7 +4,7 @@
 # extraction with no change to our own code. The versions below are what the
 # working backend venv resolves as of 2026-07-28; bump them consciously (and
 # re-run the test suite) instead of letting a rebuild do it silently.
-fastapi==0.139.2
+fastapi==0.141.1
 uvicorn[standard]==0.52.1
 pydantic-settings==2.14.2
 cryptography==50.0.0

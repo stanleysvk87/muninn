@@ -5,7 +5,7 @@
 # working backend venv resolves as of 2026-07-28; bump them consciously (and
 # re-run the test suite) instead of letting a rebuild do it silently.
 fastapi==0.139.2
-uvicorn[standard]==0.51.0
+uvicorn[standard]==0.52.1
 pydantic-settings==2.14.2
 cryptography==50.0.0
 anthropic==0.117.0

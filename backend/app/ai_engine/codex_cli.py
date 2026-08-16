@@ -40,15 +40,16 @@ class CodexCLIProvider:
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as out_f:
             output_path = Path(out_f.name)
 
-        # POZOR: prompt musi byt HNED za "exec", pred -i/--image -- je to
-        # variadicky flag (num_args = 1..) rovnako ako claude -p --add-dir/
-        # --allowedTools, a zozerie nasledujuci argument ako dalsiu prilohu
-        # namiesto promptu, co necha PROMPT prazdny a codex skonci s "No
-        # prompt provided via stdin".
+        # Prompt ide cez stdin, nie ako argv element -- rovnake riziko ako
+        # v claude_cli.py vyssie (dlhy OCR text z viacstranoveho PDF moze
+        # presiahnut limit velkosti argv jadra). Vynechanie poziciovneho
+        # PROMPT argumentu necha codex citat ho zo stdin -- a zaroven to
+        # odstranuje aj povodne riziko, ze -i/--image (variadicky flag) by
+        # prompt zozral ako dalsiu prilohu, lebo prompt uz medzi argv
+        # vobec nie je.
         cmd = [
             "codex",
             "exec",
-            prompt,
             "-C",
             str(file_path.parent),
             "-s",
@@ -62,7 +63,7 @@ class CodexCLIProvider:
             cmd += ["-i", str(file_path)]
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=120)
         except (subprocess.TimeoutExpired, OSError) as exc:
             raise ProviderUnavailableError(f"codex exec zlyhalo: {exc}") from exc
         finally:

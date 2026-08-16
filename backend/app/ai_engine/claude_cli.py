@@ -19,17 +19,20 @@ class ClaudeCLIProvider:
 
     def extract(self, file_path: Path) -> ExtractionResult:
         prompt = build_prompt(str(file_path), read_inline_text(file_path))
-        # POZOR: prompt musi byt HNED za -p. --add-dir a --allowedTools su
-        # variadicke flagy (commander "...") a zozeru nasledujuci argument
-        # ako svoju vlastnu hodnotu -- ak by prompt prisiel az za nimi,
-        # claude -p skonci chybou "no prompt provided". Overene v
-        # ~/scripts/dokumenty/process-dokument.sh.
+        # Prompt ide cez stdin, nie ako argv element -- pri dlhsom
+        # dokumente (viacstranovy PDF/OCR text) moze prompt presiahnut
+        # limit velkosti argv jadra (OSError [Errno 7] Argument list too
+        # long), rovnaky bug ako v Mimir 2026-08-16. `claude -p` bez
+        # poziciovneho promptu ho cita zo stdin. Povodny dovod, preco
+        # prompt musel byt HNED za -p (--add-dir a --allowedTools su
+        # variadicke flagy a zozrali by ho ako svoju hodnotu) teraz odpada
+        # -- prompt uz nie je poziciovy argument vobec, takze nie je co
+        # zozrat. Overene v ~/scripts/dokumenty/process-dokument.sh.
         try:
             proc = subprocess.run(
                 [
                     "claude",
                     "-p",
-                    prompt,
                     "--output-format",
                     "json",
                     "--allowedTools",
@@ -37,6 +40,7 @@ class ClaudeCLIProvider:
                     "--add-dir",
                     str(file_path.parent),
                 ],
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=120,

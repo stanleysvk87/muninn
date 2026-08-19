@@ -14,4 +14,4 @@ python-multipart==0.0.32
 Pillow==12.3.0
 httpx==0.28.1
 pypdf==6.15.0
-PyMuPDF==1.28.0
+PyMuPDF==1.28.2
